@@ -137,7 +137,9 @@ def deploy(target, config, key):
     secret.chmod(0o444)  # Parent directory is 0700; container's non-root UID needs read access.
     (target / 'data').mkdir(exist_ok=True)
     (target / 'backups').mkdir(exist_ok=True)
-    utility(target, '-e', "const f=require('node:fs');f.chownSync('/target/data',1000,1000);f.chmodSync('/target/data',0o700)")
+    # Imported snapshots can be root/administrator-owned with mode 0600. Normalize
+    # the files as well as the directory before starting the non-root application.
+    utility(target, '-e', "const f=require('node:fs'),p=require('node:path');function own(n){const s=f.lstatSync(n);if(s.isSymbolicLink())throw Error('Symlink in data directory');if(s.isDirectory())for(const x of f.readdirSync(n))own(p.join(n,x));f.chownSync(n,1000,1000);f.chmodSync(n,s.isDirectory()?0o700:0o600)}own('/target/data')")
     snapshot = 'backups/' + str(time.time_ns()) + '.sqlite'
     # Existence check via Docker also works when the SQLite directory is owned by UID 1000.
     had_database = utility(target, '-e', "console.log(require('node:fs').existsSync('/target/data/regiment.sqlite'))") == 'true'

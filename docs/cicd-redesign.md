@@ -2,6 +2,8 @@
 
 Prepared 21 October 2026 for `Fuhrizen/22-Elysian-Drop-Orbat`.
 
+Repository work completed: the history-reset workflow succeeded, creating parentless baseline `786cca8c41cbd7cd6ce24b07414513a8f22423bf`; `development` was removed, and all 60 application/database/migration/static-asset files were verified unchanged. The temporary reset workflow was then retired from the active workflow directory. Subsequent commits belong to this new history. The infrastructure setup and live migration below remain to be performed.
+
 ## 1. Target and boundaries
 
 Build a new VM alongside the existing production VM, preserve the current production database, validate the replacement privately, then repoint Nginx Proxy Manager (NPM). The current production VM remains the rollback route during cutover. Do not attach both applications to one live SQLite database.
