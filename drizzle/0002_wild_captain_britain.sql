@@ -1,0 +1,1 @@
+ALTER TABLE `assignments` ADD `withdrawal_hash` text DEFAULT '' NOT NULL;

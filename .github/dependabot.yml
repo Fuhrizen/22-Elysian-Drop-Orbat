@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: monthly}
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: npm
+    directory: /
+    schedule: {interval: monthly}
+    open-pull-requests-limit: 3
+    groups:
+      compatible-dependencies:
+        patterns: ['*']
+        update-types: [minor, patch]
+    ignore:
+      # Compiler API migration is a separate change; current tests use TS 5.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      # Keep type definitions aligned with the deployed Node 24 runtime.
+      - dependency-name: '@types/node'
+        versions: ['>=25']

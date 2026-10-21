@@ -1,0 +1,4 @@
+'use client';
+import {useState} from 'react';
+import {ChevronRight} from 'lucide-react';
+export function MunitorumBar(){const [expanded,setExpanded]=useState(true);return <section className={'munitorum-bar '+(expanded?'expanded':'collapsed')}><button type="button" aria-expanded={expanded} aria-controls="munitorum-devotion" onClick={()=>setExpanded(v=>!v)}><span>DEPARTMENTO MUNITORUM</span><span>WARRANT / XXII–SPEAR <ChevronRight size={14}/></span></button><div id="munitorum-devotion" className="munitorum-message" aria-hidden={!expanded}><div><img className="devotion-aquila" src="/imperial-aquila.png" alt="Imperial Aquila"/><div className="devotion-text"><strong>The Emperor protects.</strong><span>By His will, we descend. Duty is its own reward.</span></div><img className="devotion-purity" src="/munitorum-purity-seal.png" alt="Munitorum purity seal"/></div></div></section>}

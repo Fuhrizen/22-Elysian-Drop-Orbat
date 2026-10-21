@@ -1,0 +1,8 @@
+allowBuilds:
+  sharp: true
+# Keep transitive dependencies above their patched releases, including optional peers.
+overrides:
+  '@babel/core@<7.29.6': ^7.29.6
+  'browserslist@<4.28.7': ^4.28.7
+  'baseline-browser-mapping@<2.11.0': ^2.11.0
+  'source-map-js@<1.2.2': ^1.2.2
