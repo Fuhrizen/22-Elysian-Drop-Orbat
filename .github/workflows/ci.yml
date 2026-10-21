@@ -1,0 +1,69 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  essentials:
+    name: Essentials
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Check out the exact application revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.REVISION }}
+          persist-credentials: false
+      - name: Install pnpm from packageManager
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - name: Set up Node and cache dependencies
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test application behaviour and deployment recovery
+        run: |
+          pnpm test
+          pnpm test:deploy
+      - name: Build and validate TypeScript once
+        run: pnpm build
+      - name: Package and smoke-test the runtime image
+        run: bash scripts/ci-image.sh
+      - name: Publish the tested image for main and trusted internal PRs
+        if: >-
+          github.actor != 'dependabot[bot]' &&
+          (github.event_name != 'pull_request' ||
+           (github.event.pull_request.head.repo.full_name == github.repository &&
+            !github.event.pull_request.draft))
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          docker tag orbat-ci:tested "$IMAGE"
+          docker push "$IMAGE"
+          printf '### Tested image\n`%s`\n\nRevision: `%s`\n' "$IMAGE" "$REVISION" >> "$GITHUB_STEP_SUMMARY"
+      - name: Show the preview address
+        if: github.event_name == 'pull_request' && vars.ORBAT_PREVIEW_DOMAIN != ''
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PREVIEW_DOMAIN: ${{ vars.ORBAT_PREVIEW_DOMAIN }}
+        run: |
+          printf '\nPreview after deployment reconciliation: https://pr-%s.%s (LAN only). Drafts, forks, and authors outside the deployment allowlist are excluded.\n' "$PR_NUMBER" "$PREVIEW_DOMAIN" >> "$GITHUB_STEP_SUMMARY"

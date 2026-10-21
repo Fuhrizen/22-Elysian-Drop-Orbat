@@ -1,0 +1,35 @@
+'use client';
+
+import {useEffect,useState} from 'react';
+import {Dialog,DialogContent,DialogTitle,DialogDescription} from '@/components/ui/dialog';
+import {adminHeaders} from '@/lib/client-session';
+import {rankAbbreviation} from '@/lib/regiment';
+
+export type ArchiveMember={id:string;name:string;rank:string;status:string};
+export type ArchiveSnapshot={medalAwards?:{user_id:string;name:string;description:string}[];configuration?:{mode:string};sections?:{id:string;name:string}[];roles:{id:string;name:string;code:string;section?:string}[];personnel:ArchiveMember[];assignments:{slot:string;user_id:string}[]};
+export type MembershipCorrection={user:string;slot:string;reason:string;expectedAssignment:string|null};
+type Props={snapshot:ArchiveSnapshot;initialUser:string;initialSlot:string;open:boolean;disabled?:boolean;onClose:()=>void;onSave:(correction:MembershipCorrection)=>Promise<void>};
+
+export function OperationMembershipCorrection({snapshot,initialUser,initialSlot,open,disabled,onClose,onSave}:Props){
+ const [people,setPeople]=useState<ArchiveMember[]>([]),[loading,setLoading]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(''),[loadError,setLoadError]=useState(''),[retry,setRetry]=useState(0);
+ const [query,setQuery]=useState(''),[user,setUser]=useState(initialUser),[slot,setSlot]=useState(initialSlot),[reason,setReason]=useState('');
+ useEffect(()=>{if(!open)return;setUser(initialUser);setSlot(initialSlot);setReason('');setQuery('');setError('')},[open,initialUser,initialSlot]);
+ useEffect(()=>{if(!open)return;const controller=new AbortController();setLoading(true);setLoadError('');fetch('/api/regiment',{headers:adminHeaders(),cache:'no-store',signal:controller.signal}).then(async response=>{const data=await response.json();if(!response.ok)throw Error(data.error||'Could not retrieve personnel.');setPeople(data.users||[])}).catch(cause=>{if(cause.name!=='AbortError')setLoadError(cause.message)}).finally(()=>{if(!controller.signal.aborted)setLoading(false)});return()=>controller.abort()},[open,retry]);
+ const merged=new Map(people.map(person=>[person.id,person]));for(const person of snapshot.personnel)merged.set(person.id,person);
+ const candidates=[...merged.values()].sort((a,b)=>a.name.localeCompare(b.name));
+ const person=merged.get(user),assignment=snapshot.assignments.find(a=>a.user_id===user);
+ const currentSlot=assignment?.slot || 'absent';
+ const normalizedCurrentSlot=snapshot.roles.some(role=>role.id===currentSlot)?currentSlot:currentSlot.split(':')[0];
+ const unchanged=!!assignment&&slot===normalizedCurrentSlot;
+ const label=(value:string)=>snapshot.roles.find(role=>role.id===value)?.name || ({reserve:'Attending / reserve',tentative:'Absent',absent:'Absent'} as Record<string,string>)[value.split(':')[0]] || value;
+ const blocked=!!disabled||saving;
+ const destinationOccupied=snapshot.assignments.some(a=>a.slot===slot&&a.user_id!==user)&&snapshot.roles.some(r=>r.id===slot);
+ async function save(){if(blocked||!user||!reason.trim()||destinationOccupied||unchanged)return;setSaving(true);setError('');try{await onSave({user,slot,reason:reason.trim(),expectedAssignment:assignment?.slot ?? null});onClose()}catch(cause){setError((cause as Error).message)}finally{setSaving(false)}}
+ return <Dialog open={open} onOpenChange={value=>{if(!value&&!saving)onClose()}}><DialogContent className="regiment-dialog archive-correction-dialog" showCloseButton={!saving} onEscapeKeyDown={event=>{if(saving)event.preventDefault()}} onInteractOutside={event=>{if(saving)event.preventDefault()}}><DialogTitle>{initialUser?'Correct recorded membership':'Assign a member'}</DialogTitle><DialogDescription>Update this sealed operation. Current signups are unaffected.</DialogDescription><form className="archive-correction-form" onSubmit={event=>{event.preventDefault();void save()}}>
+ <div className="archive-correction-person"><label htmlFor="archive-member-search">Find personnel</label><input id="archive-member-search" placeholder="Search by name or rank" value={query} onChange={event=>setQuery(event.target.value)} disabled={blocked}/><label htmlFor="archive-member-select">Member</label><select id="archive-member-select" required value={user} disabled={blocked} onChange={event=>setUser(event.target.value)}><option value="">Select a member</option>{candidates.filter(p=>p.id===user||`${p.name} ${p.rank}`.toLowerCase().includes(query.trim().toLowerCase())).map(p=><option key={p.id} value={p.id}>{rankAbbreviation(p.rank)} {p.name}{snapshot.personnel.some(member=>member.id===p.id)?'':' · not in manifest'}</option>)}</select>{loading&&<span role="status" className="field-help">Retrieving current personnel…</span>}{loadError&&<div role="alert" className="form-error">{loadError} <button type="button" className="secondary" disabled={blocked||loading} onClick={()=>setRetry(value=>value+1)}>Retry</button></div>}</div>
+ {person&&<div className="archive-correction-current"><span className="eyebrow">CURRENT RECORD</span><strong>{rankAbbreviation(person.rank)} {person.name}</strong><span>{snapshot.personnel.some(p=>p.id===user)?label(currentSlot):'Not in this operation'}</span></div>}
+ <label htmlFor="archive-destination">Recorded role or attendance</label><select id="archive-destination" value={slot} disabled={blocked} onChange={event=>setSlot(event.target.value)}><optgroup label="Operation roles">{snapshot.roles.map(role=>{const occupant=snapshot.assignments.find(a=>a.slot===role.id&&a.user_id!==user);return <option key={role.id} value={role.id} disabled={!!occupant}>{role.code?role.code+' · ':''}{role.name}{occupant?' · occupied':''}</option>})}</optgroup><optgroup label="Other attendance"><option value="reserve">Attending / reserve</option><option value="absent">Absent</option></optgroup></select>
+ {person&&<p className="field-help">Recorded service status: <strong>{({active:'Active',absent:'On leave',retired:'Retired',inactive:'Inactive'} as Record<string,string>)[person.status] || person.status}</strong>. {snapshot.personnel.some(member=>member.id===user)?'Preserved from the sealed operation; attendance changes do not alter it.':'This member has no sealed personnel record; their current service status will be recorded when added.'}</p>}
+ <label htmlFor="archive-correction-reason">Reason for correction</label><textarea id="archive-correction-reason" value={reason} onChange={event=>setReason(event.target.value)} placeholder="Explain what was recorded incorrectly" required maxLength={1000} disabled={blocked} rows={3}/><p className="field-help">The previous record and your reason are saved in the admin audit log.</p>{error&&<p role="alert" className="form-error">{error}</p>}<div className="archive-correction-actions"><button type="button" className="secondary" onClick={onClose} disabled={saving}>Cancel</button><button className="secondary" disabled={blocked||!user||!reason.trim()||destinationOccupied||unchanged}>{saving?'Saving…':'Save correction'}</button></div>
+ </form></DialogContent></Dialog>
+}

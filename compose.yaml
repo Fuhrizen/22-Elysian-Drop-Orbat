@@ -1,0 +1,22 @@
+name: xxii-regimental-terminal
+services:
+  terminal:
+    build: .
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-3000}:3000"
+    environment:
+      ADMIN_ACCESS_KEY: ${ADMIN_ACCESS_KEY:?Set ADMIN_ACCESS_KEY in .env before starting}
+      SITE_ORIGIN: ${SITE_ORIGIN:-http://localhost:3000}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      TZ: Europe/London
+    volumes:
+      - regiment_data:/app/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 30s
+volumes:
+  regiment_data:

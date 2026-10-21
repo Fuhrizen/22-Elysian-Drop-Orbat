@@ -1,0 +1,59 @@
+# Copy deploy/controller/ CONTENTS into the ROOT of a separate PRIVATE repository.
+name: Reconcile deployments
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: orbat-deployments
+  cancel-in-progress: false
+jobs:
+  production:
+    name: Production
+    runs-on: [self-hosted, linux, x64, orbat-deploy-v2]
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ vars.ORBAT_SITE_ORIGIN }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Reconcile the latest successful main build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORBAT_ENABLED: ${{ vars.ORBAT_ENABLED }}
+          ORBAT_SOURCE_REPOSITORY: ${{ vars.ORBAT_SOURCE_REPOSITORY }}
+          ORBAT_ROOT: ${{ vars.ORBAT_ROOT }}
+          ORBAT_BIND_ADDRESS: ${{ vars.ORBAT_BIND_ADDRESS }}
+          ORBAT_HOST_PORT: ${{ vars.ORBAT_HOST_PORT }}
+          ORBAT_SITE_ORIGIN: ${{ vars.ORBAT_SITE_ORIGIN }}
+          ORBAT_ADMIN_ACCESS_KEY: ${{ secrets.ORBAT_ADMIN_ACCESS_KEY }}
+          ORBAT_PRODUCTION_READY: ${{ vars.ORBAT_PRODUCTION_READY }}
+        run: python3 reconcile.py production
+  previews:
+    name: Active PR previews
+    needs: production
+    if: always() && !cancelled()
+    runs-on: [self-hosted, linux, x64, orbat-deploy-v2]
+    timeout-minutes: 15
+    environment: preview
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Reconcile active trusted PRs and remove closed previews
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORBAT_ENABLED: ${{ vars.ORBAT_ENABLED }}
+          ORBAT_SOURCE_REPOSITORY: ${{ vars.ORBAT_SOURCE_REPOSITORY }}
+          ORBAT_ROOT: ${{ vars.ORBAT_ROOT }}
+          ORBAT_BIND_ADDRESS: ${{ vars.ORBAT_BIND_ADDRESS }}
+          ORBAT_HOST_PORT: ${{ vars.ORBAT_HOST_PORT }}
+          ORBAT_PREVIEW_DOMAIN: ${{ vars.ORBAT_PREVIEW_DOMAIN }}
+          ORBAT_PREVIEW_LIMIT: ${{ vars.ORBAT_PREVIEW_LIMIT }}
+          ORBAT_PREVIEW_AUTHORS: ${{ vars.ORBAT_PREVIEW_AUTHORS }}
+          ORBAT_ADMIN_ACCESS_KEY: ${{ secrets.ORBAT_ADMIN_ACCESS_KEY }}
+        run: python3 reconcile.py preview

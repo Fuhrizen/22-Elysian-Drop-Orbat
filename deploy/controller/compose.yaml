@@ -1,0 +1,34 @@
+services:
+  terminal:
+    image: ${ORBAT_IMAGE:?}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    ports:
+      - '${ORBAT_BIND_ADDRESS:?}:${ORBAT_HOST_PORT:?}:3000'
+    environment:
+      SITE_ORIGIN: ${ORBAT_SITE_ORIGIN:?}
+      TRUST_PROXY: 'true'
+      ADMIN_ACCESS_KEY_FILE: /run/secrets/admin_key
+      ORBAT_DISABLE_AUTO_RENEW: ${ORBAT_DISABLE_AUTO_RENEW:-true}
+      TZ: Europe/London
+    volumes:
+      - ${ORBAT_TARGET_DIR:?}/data:/app/data
+      - ${ORBAT_TARGET_DIR:?}/admin.key:/run/secrets/admin_key:ro
+    mem_limit: ${ORBAT_MEMORY_LIMIT:-640m}
+    cpus: ${ORBAT_CPU_LIMIT:-0.35}
+    pids_limit: 128
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+    networks: [isolated]
+networks:
+  isolated:
+    internal: true

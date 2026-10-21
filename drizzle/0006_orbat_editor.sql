@@ -1,0 +1,6 @@
+CREATE TABLE orbat_templates (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    layout TEXT NOT NULL,
+    updated TEXT NOT NULL
+);

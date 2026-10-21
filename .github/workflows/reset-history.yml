@@ -1,0 +1,42 @@
+# One-time reset explicitly requested by the repository owner on 2026-10-21.
+# The exact old SHA guard prevents this from running on future normal pushes.
+name: Reset repository history once
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/reset-history.yml]
+permissions:
+  contents: read
+jobs:
+  reset:
+    if: >-
+      github.repository == 'Fuhrizen/22-Elysian-Drop-Orbat' &&
+      github.event.before == 'e8a9202afe5a211efcc16cf096f9cb4ea3042f2b'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Verify refs and replace main with a parentless initial commit
+        env:
+          EXPECTED_MAIN: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          [[ $(git ls-remote origin refs/heads/main | cut -f1) == "$EXPECTED_MAIN" ]]
+          [[ $(git ls-remote origin refs/heads/development | cut -f1) == e8a9202afe5a211efcc16cf096f9cb4ea3042f2b ]]
+          [[ $(git ls-remote --heads origin | wc -l) -eq 2 ]]
+          [[ -z $(git ls-remote --tags origin) ]]
+          ROOT=$(git -c user.name='Fuhrizen' -c user.email='63525245+Fuhrizen@users.noreply.github.com' commit-tree 'HEAD^{tree}' -m 'Initial import: ORBAT application and redesigned CI/CD')
+          git push --atomic \
+            --force-with-lease="refs/heads/main:$EXPECTED_MAIN" \
+            --force-with-lease=refs/heads/development:e8a9202afe5a211efcc16cf096f9cb4ea3042f2b \
+            origin "$ROOT:refs/heads/main" :refs/heads/development
+          [[ $(git rev-list --count "$ROOT") -eq 1 ]]
+          printf 'New parentless main: `%s`. Retired development.\n' "$ROOT" >> "$GITHUB_STEP_SUMMARY"
+          # GITHUB_TOKEN pushes do not trigger CI, so dispatch it explicitly.
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref main
