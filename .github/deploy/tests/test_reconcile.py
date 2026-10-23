@@ -47,6 +47,16 @@ class Selection(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'incomplete'): c.inventory()
 
 
+class PortMapping(unittest.TestCase):
+    def test_missing_mapping_is_rejected_even_if_container_is_healthy(self):
+        target=Path('/srv/orbat/previews/pr-12')
+        state=c.config(target,'a'*40,'image','127.0.0.1',32001)
+        with patch.object(c,'compose',return_value=''):
+            with self.assertRaisesRegex(RuntimeError,'not published'):c.verify_published_port(target,state)
+        with patch.object(c,'compose',return_value='127.0.0.1:32001'):
+            c.verify_published_port(target,state)
+
+
 class Comments(unittest.TestCase):
     def setUp(self):
         self.state = {'origin': 'https://pr-12.22preview.ivenity.co.uk', 'revision': 'a'*40}
@@ -195,6 +205,9 @@ class Gateway(unittest.TestCase):
 
 class Persistence(unittest.TestCase):
     def setUp(self):
+        mapping_patch = patch.object(c, 'verify_published_port')
+        self.port_check = mapping_patch.start()
+        self.addCleanup(mapping_patch.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.target = self.root / 'previews/pr-12'
@@ -238,6 +251,17 @@ class Persistence(unittest.TestCase):
         self.assertEqual(c.read(self.target/'current.json'), self.new)
         self.assertFalse((self.target/'data/.deployment-paused').exists())
         self.assertFalse((self.target/'transaction.json').exists())
+
+    def test_internal_network_is_migrated_without_resetting_database(self):
+        self.old['compose']['networks']={'isolated':{'internal':True}}
+        self.old['compose']['services']['terminal']['networks']=['isolated']
+        c.atomic(self.target/'current.json',self.old)
+        with patch.object(c,'utility',side_effect=self.utility), patch.object(c,'compose') as compose, patch.object(c,'smoke'):
+            c.deploy(self.target,self.new,'bootstrap')
+        self.assertTrue(any(x.args[1]==self.old and x.args[2]=='down' for x in compose.call_args_list))
+        self.assertEqual(self.records(),['existing member'])
+        self.assertEqual(self.new['compose']['networks'],{'app':{'driver':'bridge'}})
+        self.assertEqual(self.new['compose']['services']['terminal']['ports'],['127.0.0.1:32001:3000'])
 
     def test_failed_migration_restores_matching_database_and_old_image(self):
         def smoke(target, state, maintenance=False):

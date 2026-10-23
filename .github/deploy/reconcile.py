@@ -136,9 +136,9 @@ def config(target, revision, image, address, port, production=False):
         'cap_drop': ['ALL'], 'security_opt': ['no-new-privileges:true'],
         'stop_grace_period': '30s',
         'logging': {'driver': 'json-file', 'options': {'max-size': '5m', 'max-file': '2'}},
-        'networks': ['isolated']}
+        'networks': ['app']}
     return {'project': 'orbat-' + name, 'revision': revision, 'port': port, 'origin': origin,
-            'compose': {'services': {'terminal': service}, 'networks': {'isolated': {'internal': True}}}}
+            'compose': {'services': {'terminal': service}, 'networks': {'app': {'driver': 'bridge'}}}}
 
 
 def compose(target, state, *args):
@@ -163,6 +163,13 @@ def smoke(target, state, maintenance=False):
 
 def release_guard(target):
     utility(target, '-e', "require('node:fs').rmSync('/target/data/.deployment-paused',{force:true})")
+
+
+def verify_published_port(target, state):
+    expected = state['compose']['services']['terminal']['ports'][0].rsplit(':', 1)[0]
+    actual = compose(target, state, 'port', 'terminal', '3000')
+    if expected not in actual.splitlines():
+        raise RuntimeError(f'Host port is not published: expected {expected}; Docker returned {actual!r}')
 
 
 def recover(target):
@@ -194,6 +201,7 @@ def deploy(target, candidate, key):
     previous = read(target / 'current.json')
     if previous == candidate:
         compose(target, candidate, 'up', '-d', '--wait', '--wait-timeout', '90')
+        verify_published_port(target, candidate)
         smoke(target, candidate)
         return
     if shutil.disk_usage(target).free < 2 * 1024**3:
@@ -220,7 +228,11 @@ def deploy(target, candidate, key):
         atomic(target / (snapshot + '.json'), tx)
         tx['phase'] = 'candidate'
         atomic(target / 'transaction.json', tx)
+        if previous and previous['compose']['networks'] != candidate['compose']['networks']:
+            # Internal/bridge mode is immutable; replace only this target's old network.
+            compose(target, previous, 'down')
         compose(target, candidate, 'up', '-d', '--wait', '--wait-timeout', '90')
+        verify_published_port(target, candidate)
         smoke(target, candidate, maintenance=True)
         atomic(target / 'current.json', candidate)
         release_guard(target)
