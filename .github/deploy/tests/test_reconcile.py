@@ -133,6 +133,20 @@ class Gateway(unittest.TestCase):
         self.assertFalse(any(x[1]=='rm' for x in self.calls))
         self.assertTrue(any(x[1]=='exec' and x[-1]=='reload' for x in self.calls))
 
+    def test_unchanged_routes_skip_validation_and_reload(self):
+        calls=[]
+        def command(args, extra=None):
+            calls.append(args)
+            if args[1:3] == ['ps','-a']: return 'orbat-preview-gateway'
+            if args[1] == 'inspect':
+                return json.dumps([{'Config':{'User':'nginx'},'State':{'Status':'running','Running':True}}])
+            return ''
+        with tempfile.TemporaryDirectory() as directory, patch.object(c,'ROOT',Path(directory)), patch.object(c,'command',side_effect=command):
+            c.gateway('192.168.1.20',[])
+            calls.clear()
+            c.gateway('192.168.1.20',[])
+        self.assertFalse(any(x[1] in ('run','start','exec','rm') for x in calls))
+
     def test_restart_failure_includes_diagnostics_instead_of_blind_exec(self):
         with self.assertRaisesRegex(RuntimeError,'startup failure details'):
             self.execute(old_user='nginx', restarting=True)
@@ -219,6 +233,17 @@ class Persistence(unittest.TestCase):
     def test_ports_do_not_collide_with_retained_closed_prs(self):
         other = self.root/'previews/pr-13'
         self.assertEqual(c.allocate_port(other, [self.target]), 32002)
+
+    def test_same_revision_reuses_verified_digest_without_registry_pull(self):
+        self.old['compose']['services']['terminal']['image'] = f'ghcr.io/{c.REPOSITORY.lower()}@sha256:verified'
+        c.atomic(self.target/'current.json',self.old)
+        with patch.object(c,'image_for') as fetch:
+            image=c.release_image(self.target,{},'a'*40)
+        self.assertTrue(image.endswith('@sha256:verified'))
+        fetch.assert_not_called()
+        with patch.object(c,'image_for',return_value='new image') as fetch:
+            self.assertEqual(c.release_image(self.target,{},'b'*40),'new image')
+        fetch.assert_called_once()
 
     def test_production_and_preview_storage_are_separate(self):
         prod = c.config(self.root/'production', 'a'*40, 'image', '192.168.1.20', 3000, True)

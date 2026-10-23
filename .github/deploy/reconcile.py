@@ -14,6 +14,10 @@ import time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from preview_gateway import reconcile_gateway
+from preview_comments import COMMENT_MARKER, update_comment
+
 ROOT = Path('/srv/orbat')
 REPOSITORY = os.environ.get('GITHUB_REPOSITORY', 'Fuhrizen/22-Elysian-Drop-Orbat')
 APPROVED_AUTHORS = {'fuhrizen'}
@@ -89,6 +93,15 @@ def image_for(run, revision):
         raise ValueError('Image source/revision mismatch')
     prefix = f'ghcr.io/{REPOSITORY.lower()}@sha256:'
     return next(d for d in info['RepoDigests'] if d.startswith(prefix))
+
+
+def release_image(target, run, revision):
+    previous = read(target / 'current.json')
+    if previous and previous['revision'] == revision:
+        image = previous['compose']['services']['terminal']['image']
+        if image.startswith(f'ghcr.io/{REPOSITORY.lower()}@sha256:'):
+            return image
+    return image_for(run, revision)
 
 
 def atomic(path, value):
@@ -238,63 +251,7 @@ def allocate_port(target, targets):
 
 
 def gateway(address, states):
-    directory = ROOT / 'gateway'
-    directory.mkdir(exist_ok=True)
-    routes = ['server { listen ' + address + ':8081 default_server; return 404; }']
-    for state in states:
-        host = state['origin'].removeprefix('https://')
-        if not re.fullmatch(r'pr-[1-9][0-9]*\.' + re.escape(PREVIEW_DOMAIN), host):
-            raise ValueError('Invalid preview hostname')
-        port = int(state['port'])
-        routes.append(f'''server {{ listen {address}:8081; server_name {host};
- location / {{ proxy_pass http://127.0.0.1:{port}; proxy_set_header Host $host;
- proxy_set_header X-Forwarded-Proto https; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; }} }}''')
-    configuration = ('pid /tmp/nginx.pid; error_log /dev/stderr; events {} http { '
-                     'access_log /dev/stdout; client_body_temp_path /tmp/client; '
-                     'proxy_temp_path /tmp/proxy; fastcgi_temp_path /tmp/fastcgi; '
-                     'uwsgi_temp_path /tmp/uwsgi; scgi_temp_path /tmp/scgi;\n' + '\n'.join(routes) + '\n}')
-    directory.chmod(0o755)  # Only gateway config is mounted; nginx must traverse it.
-    pending = directory / 'pending.conf'
-    pending.write_text(configuration)
-    pending.chmod(0o444)
-    runtime = ['--network', 'host', '--user', 'nginx', '--read-only',
-               '--tmpfs', '/tmp:rw,nosuid,size=32m,mode=1777', '--cap-drop', 'ALL',
-               '--security-opt', 'no-new-privileges:true', '--memory', '64m', '--cpus', '0.1',
-               '-v', f'{directory}:/etc/orbat:ro', '--entrypoint', 'nginx']
-    # Validate with the SAME user, capabilities, mounts and writable paths as runtime.
-    command(['docker', 'run', '--rm', *runtime, 'nginx:stable-alpine',
-             '-c', '/etc/orbat/pending.conf', '-t'])
-    pending.replace(directory / 'nginx.conf')
-    containers = command(['docker', 'ps', '-a', '--format', '{{.Names}}']).splitlines()
-    exists = 'orbat-preview-gateway' in containers
-    if exists:
-        old = json.loads(command(['docker', 'inspect', 'orbat-preview-gateway']))[0]
-        # Migrate the existing root/cap-drop container, including a restart loop.
-        if old['Config'].get('User') != 'nginx':
-            command(['docker', 'rm', '-f', 'orbat-preview-gateway'])
-            exists = False
-    if not exists:
-        command(['docker', 'run', '-d', '--name', 'orbat-preview-gateway',
-                 '--restart', 'unless-stopped', *runtime,
-                 '--log-opt', 'max-size=5m', '--log-opt', 'max-file=2',
-                 'nginx:stable-alpine', '-c', '/etc/orbat/nginx.conf', '-g', 'daemon off;'])
-    else:
-        command(['docker', 'start', 'orbat-preview-gateway'])
-    # Do not exec into a container until its master is running and accepting signals.
-    for attempt in range(20):
-        state = json.loads(command(['docker', 'inspect', 'orbat-preview-gateway']))[0]['State']
-        if state.get('Status') in ('restarting', 'exited', 'dead'):
-            break
-        if state.get('Running'):
-            try:
-                command(['docker', 'exec', 'orbat-preview-gateway', 'nginx',
-                         '-c', '/etc/orbat/nginx.conf', '-s', 'reload'])
-                return
-            except subprocess.CalledProcessError:
-                pass
-        time.sleep(0.5)
-    logs = command(['docker', 'logs', '--tail', '60', 'orbat-preview-gateway'])
-    raise RuntimeError('Preview gateway failed startup; inspect docker logs orbat-preview-gateway.\n' + logs)
+    reconcile_gateway(ROOT, address, states, command, PREVIEW_DOMAIN)
 
 
 def summary(text):
@@ -304,33 +261,8 @@ def summary(text):
             stream.write(text + '\n\n')
 
 
-COMMENT_MARKER = '<!-- orbat-preview -->'
-
-
 def preview_comment(number, state=None):
-    if type(number) is not int or number < 1:
-        raise ValueError('Invalid PR number')
-    if state:
-        body = (COMMENT_MARKER + '\n### Preview ready\n\n'
-                + f'**[Open preview]({state["origin"]})** - LAN access only.\n\n'
-                + f'Deployed revision: `{state["revision"]}`\n\n'
-                + 'This PR keeps its own database across updates. Production data is separate.')
-    else:
-        body = (COMMENT_MARKER + '\n### Preview stopped\n\n'
-                + 'The container and route are stopped. This PR database is retained for reopening.')
-    for page in range(1, 101):
-        comments = api(f'issues/{number}/comments?per_page=100&page={page}')
-        existing = next((comment for comment in comments
-                         if comment.get('user', {}).get('login') == 'github-actions[bot]'
-                         and COMMENT_MARKER in (comment.get('body') or '')), None)
-        if existing:
-            if existing['body'] != body:
-                api(f'issues/comments/{int(existing["id"])}', 'PATCH', {'body': body})
-            return
-        if len(comments) < 100:
-            api(f'issues/{number}/comments', 'POST', {'body': body})
-            return
-    raise RuntimeError('Incomplete comment inventory; refusing to create duplicate preview comment')
+    update_comment(api, number, state)
 
 
 def reconcile(mode):
@@ -350,7 +282,7 @@ def reconcile(mode):
         if not run:
             summary('Main keeps its existing release: no successful exact-main CI build.')
             return
-        deploy(target, config(target, revision, image_for(run, revision), address, 3000, True), key)
+        deploy(target, config(target, revision, release_image(target, run, revision), address, 3000, True), key)
         summary(f'Main: {ORIGIN} - `{revision}`; persistent database retained.')
         return
     if mode != 'preview':
@@ -380,7 +312,7 @@ def reconcile(mode):
                         summary(f'{name}: waiting for VM memory headroom; production unchanged.')
                         continue
                 port = allocate_port(target, list(preview_root.glob('pr-*')))
-                deploy(target, config(target, revision, image_for(run, revision), '127.0.0.1', port), key)
+                deploy(target, config(target, revision, release_image(target, run, revision), '127.0.0.1', port), key)
             elif state := read(target / 'current.json'):
                 recover(target)
                 compose(target, state, 'up', '-d', '--wait', '--wait-timeout', '90')
