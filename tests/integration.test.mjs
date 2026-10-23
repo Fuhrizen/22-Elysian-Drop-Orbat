@@ -1,4 +1,4 @@
-import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
+import {readFileSync,mkdtempSync,rmSync,readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';import {resolve,join} from 'node:path';import {test} from 'node:test';
 import {openDatabase} from '../db/sqlite.mjs';
 import assert from 'node:assert/strict';
@@ -295,6 +295,6 @@ assert.equal((await post({action:'claim',slot:'reserve',user:memoryPeople[0]})).
 assert.equal((await post({action:'operation_config',mode:'main'})).status,200);
 assert.ok((await get()).data.assignments.find(a=>a.user_id===memoryPeople[0]).slot.startsWith('reserve:'));
 assert.equal((await post({action:'operation_config',mode:'open'})).status,200);
-const beforeRestart=JSON.stringify((await get()).data.users);adapter.close();adapter=openDatabase(join(temporary,'regiment.sqlite'),resolve('drizzle'));globalThis.__testDb=adapter;assert.equal(JSON.stringify((await get()).data.users),beforeRestart);assert.equal((await get('?medals=1')).data.awards.length,16);assert.equal((await get('?warnings=1&user='+dynamicPeople[1].id)).data.warnings.length,1);assert.equal(adapter.sqlite.prepare('SELECT count(*) AS n FROM _regiment_migrations').get().n,15);assert.equal((await post({action:'operation_config',mode:'main'})).status,200);assert.equal((await get()).data.assignments.find(a=>a.user_id===memoryPeople[1]).slot,'medic2');assert.equal((await post({action:'clear_all',tentativeAttendance:{[memoryPeople[3]]:true}})).status,200);assert.equal(adapter.sqlite.prepare('SELECT count(*) AS n FROM assignment_role_memory').get().n,0);
+const beforeRestart=JSON.stringify((await get()).data.users);adapter.close();adapter=openDatabase(join(temporary,'regiment.sqlite'),resolve('drizzle'));globalThis.__testDb=adapter;assert.equal(JSON.stringify((await get()).data.users),beforeRestart);assert.equal((await get('?medals=1')).data.awards.length,16);assert.equal((await get('?warnings=1&user='+dynamicPeople[1].id)).data.warnings.length,1);assert.equal(adapter.sqlite.prepare('SELECT count(*) AS n FROM _regiment_migrations').get().n,readdirSync('drizzle').filter(name=>/^\d+.*\.sql$/.test(name)).length);assert.equal((await post({action:'operation_config',mode:'main'})).status,200);assert.equal((await get()).data.assignments.find(a=>a.user_id===memoryPeople[1]).slot,'medic2');assert.equal((await post({action:'clear_all',tentativeAttendance:{[memoryPeople[3]]:true}})).status,200);assert.equal(adapter.sqlite.prepare('SELECT count(*) AS n FROM assignment_role_memory').get().n,0);
 }finally{adapter.close();rmSync(temporary,{recursive:true,force:true})}
 });
