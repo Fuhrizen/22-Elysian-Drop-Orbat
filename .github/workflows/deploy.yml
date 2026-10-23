@@ -26,7 +26,7 @@ jobs:
         github.event.workflow_run.event != 'pull_request'))
     uses: ./.github/workflows/deploy-target.yml
     secrets:
-      admin_secret_key: ${{ secrets.admin_secret_key }}
+      ADMIN_ACCESS_KEY: ${{ secrets.ADMIN_ACCESS_KEY }}
     with:
       mode: production
   previews:
@@ -42,6 +42,6 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/deploy-target.yml
     secrets:
-      admin_secret_key: ${{ secrets.admin_secret_key }}
+      ADMIN_ACCESS_KEY: ${{ secrets.ADMIN_ACCESS_KEY }}
     with:
       mode: preview

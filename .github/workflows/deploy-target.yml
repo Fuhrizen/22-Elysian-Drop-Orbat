@@ -2,7 +2,7 @@ name: Deploy target
 on:
   workflow_call:
     secrets:
-      admin_secret_key:
+      ADMIN_ACCESS_KEY:
         required: true
     inputs:
       mode:
@@ -28,7 +28,7 @@ jobs:
         env:
           DEPLOY_MODE: ${{ inputs.mode }}
           GH_TOKEN: ${{ github.token }}
-          ORBAT_ADMIN_ACCESS_KEY: ${{ secrets.admin_secret_key }}
+          ORBAT_ADMIN_ACCESS_KEY: ${{ secrets.ADMIN_ACCESS_KEY }}
         run: |
           case "$DEPLOY_MODE" in
             production|preview) ;;
