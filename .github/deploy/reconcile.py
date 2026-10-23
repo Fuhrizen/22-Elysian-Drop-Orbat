@@ -207,7 +207,7 @@ def deploy(target, candidate, key):
     utility(target, '-e', "const f=require('node:fs'),p=require('node:path');function fix(n){const s=f.lstatSync(n);if(s.isSymbolicLink())throw Error('Symlink in data');if(s.isDirectory())for(const x of f.readdirSync(n))fix(p.join(n,x));f.chownSync(n,1000,1000);f.chmodSync(n,s.isDirectory()?448:384)}fix('/target/data')")
     had_database = utility(target, '-e', "console.log(require('node:fs').existsSync('/target/data/regiment.sqlite'))") == 'true'
     if not had_database and not key:
-        raise ValueError('admin_secret_key is required to initialise an empty database')
+        raise ValueError('ADMIN_ACCESS_KEY is required to initialise an empty database')
     snapshot = f'backups/{time.time_ns()}.sqlite'
     tx = {'previous': previous, 'candidate': candidate, 'had_database': had_database,
           'snapshot': snapshot, 'phase': 'backup'}
