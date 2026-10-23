@@ -97,6 +97,48 @@ class Comments(unittest.TestCase):
         self.assertEqual(api.call_args.args[:2], ('issues/comments/124', 'PATCH'))
 
 
+class Gateway(unittest.TestCase):
+    def execute(self, old_user=None, restarting=False):
+        self.calls=[]
+        def command(args, extra=None):
+            self.calls.append(args)
+            if args[1:3] == ['ps', '-a']:
+                return 'orbat-preview-gateway' if old_user is not None else ''
+            if args[1] == 'inspect':
+                return json.dumps([{'Config': {'User': 'nginx' if old_user is None else old_user},
+                    'State': {'Status': 'restarting' if restarting else 'running', 'Running': not restarting}}])
+            if args[1] == 'logs': return 'startup failure details'
+            return ''
+        with tempfile.TemporaryDirectory() as directory, patch.object(c, 'ROOT', Path(directory)), patch.object(c, 'command', side_effect=command), patch.object(c.time, 'sleep'):
+            c.gateway('192.168.1.20', [])
+
+    def test_validation_and_runtime_use_same_nonroot_security_options(self):
+        self.execute()
+        runs=[x for x in self.calls if x[1]=='run']
+        self.assertEqual(len(runs),2)
+        for args in runs:
+            self.assertEqual(args[args.index('--user')+1], 'nginx')
+            self.assertIn('--read-only', args)
+            self.assertIn('ALL', args)
+            self.assertIn('/tmp:rw,nosuid,size=32m,mode=1777', args)
+        self.assertIn('/etc/orbat/pending.conf',runs[0])
+
+    def test_legacy_root_gateway_is_recreated_without_touching_apps(self):
+        self.execute(old_user='')
+        self.assertIn(['docker','rm','-f','orbat-preview-gateway'],self.calls)
+        self.assertFalse(any('production' in ' '.join(x) for x in self.calls))
+
+    def test_existing_nonroot_gateway_is_reloaded(self):
+        self.execute(old_user='nginx')
+        self.assertFalse(any(x[1]=='rm' for x in self.calls))
+        self.assertTrue(any(x[1]=='exec' and x[-1]=='reload' for x in self.calls))
+
+    def test_restart_failure_includes_diagnostics_instead_of_blind_exec(self):
+        with self.assertRaisesRegex(RuntimeError,'startup failure details'):
+            self.execute(old_user='nginx', restarting=True)
+        self.assertFalse(any(x[1]=='exec' for x in self.calls))
+
+
 class Persistence(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
