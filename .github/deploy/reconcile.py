@@ -253,25 +253,48 @@ def gateway(address, states):
                      'access_log /dev/stdout; client_body_temp_path /tmp/client; '
                      'proxy_temp_path /tmp/proxy; fastcgi_temp_path /tmp/fastcgi; '
                      'uwsgi_temp_path /tmp/uwsgi; scgi_temp_path /tmp/scgi;\n' + '\n'.join(routes) + '\n}')
+    directory.chmod(0o755)  # Only gateway config is mounted; nginx must traverse it.
     pending = directory / 'pending.conf'
     pending.write_text(configuration)
     pending.chmod(0o444)
-    command(['docker', 'run', '--rm', '--network', 'host', '--entrypoint', 'nginx',
-             '-v', f'{pending}:/etc/nginx/nginx.conf:ro', 'nginx:stable-alpine', '-t'])
-    # Directory mount allows atomic replacement to be visible inside the running gateway.
+    runtime = ['--network', 'host', '--user', 'nginx', '--read-only',
+               '--tmpfs', '/tmp:rw,nosuid,size=32m,mode=1777', '--cap-drop', 'ALL',
+               '--security-opt', 'no-new-privileges:true', '--memory', '64m', '--cpus', '0.1',
+               '-v', f'{directory}:/etc/orbat:ro', '--entrypoint', 'nginx']
+    # Validate with the SAME user, capabilities, mounts and writable paths as runtime.
+    command(['docker', 'run', '--rm', *runtime, 'nginx:stable-alpine',
+             '-c', '/etc/orbat/pending.conf', '-t'])
     pending.replace(directory / 'nginx.conf')
     containers = command(['docker', 'ps', '-a', '--format', '{{.Names}}']).splitlines()
-    if 'orbat-preview-gateway' not in containers:
+    exists = 'orbat-preview-gateway' in containers
+    if exists:
+        old = json.loads(command(['docker', 'inspect', 'orbat-preview-gateway']))[0]
+        # Migrate the existing root/cap-drop container, including a restart loop.
+        if old['Config'].get('User') != 'nginx':
+            command(['docker', 'rm', '-f', 'orbat-preview-gateway'])
+            exists = False
+    if not exists:
         command(['docker', 'run', '-d', '--name', 'orbat-preview-gateway',
-                 '--restart', 'unless-stopped', '--network', 'host', '--read-only',
-                 '--tmpfs', '/tmp:rw,nosuid,size=32m', '--cap-drop', 'ALL',
-                 '--security-opt', 'no-new-privileges:true', '--memory', '64m', '--cpus', '0.1',
+                 '--restart', 'unless-stopped', *runtime,
                  '--log-opt', 'max-size=5m', '--log-opt', 'max-file=2',
-                 '-v', f'{directory}:/etc/orbat:ro', '--entrypoint', 'nginx',
                  'nginx:stable-alpine', '-c', '/etc/orbat/nginx.conf', '-g', 'daemon off;'])
     else:
         command(['docker', 'start', 'orbat-preview-gateway'])
-        command(['docker', 'exec', 'orbat-preview-gateway', 'nginx', '-c', '/etc/orbat/nginx.conf', '-s', 'reload'])
+    # Do not exec into a container until its master is running and accepting signals.
+    for attempt in range(20):
+        state = json.loads(command(['docker', 'inspect', 'orbat-preview-gateway']))[0]['State']
+        if state.get('Status') in ('restarting', 'exited', 'dead'):
+            break
+        if state.get('Running'):
+            try:
+                command(['docker', 'exec', 'orbat-preview-gateway', 'nginx',
+                         '-c', '/etc/orbat/nginx.conf', '-s', 'reload'])
+                return
+            except subprocess.CalledProcessError:
+                pass
+        time.sleep(0.5)
+    logs = command(['docker', 'logs', '--tail', '60', 'orbat-preview-gateway'])
+    raise RuntimeError('Preview gateway failed startup; inspect docker logs orbat-preview-gateway.\n' + logs)
 
 
 def summary(text):
