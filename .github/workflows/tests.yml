@@ -22,5 +22,5 @@ jobs:
         run: pnpm audit --audit-level=high
       - name: Verify / Deployment selection, persistence and recovery
         run: python3 -m unittest discover -s .github/deploy/tests -v
-    - name: Verify / Real non-root preview gateway startup and reload
-      run: python3 .github/deploy/gateway-smoke.py
+      - name: Verify / Real non-root preview gateway startup and reload
+        run: python3 .github/deploy/gateway-smoke.py
