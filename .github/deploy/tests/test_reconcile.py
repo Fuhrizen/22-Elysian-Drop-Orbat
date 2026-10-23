@@ -47,6 +47,56 @@ class Selection(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'incomplete'): c.inventory()
 
 
+class Comments(unittest.TestCase):
+    def setUp(self):
+        self.state = {'origin': 'https://pr-12.22preview.ivenity.co.uk', 'revision': 'a'*40}
+
+    def test_first_ready_comment_has_url_revision_and_lan_notice(self):
+        with patch.object(c, 'api', return_value=[]) as api:
+            c.preview_comment(12, self.state)
+        path, method, data = api.call_args.args
+        self.assertEqual((path, method), ('issues/12/comments', 'POST'))
+        self.assertIn(self.state['origin'], data['body'])
+        self.assertIn(self.state['revision'], data['body'])
+        self.assertIn('LAN access only', data['body'])
+
+    def test_update_existing_bot_comment_without_duplicates(self):
+        existing = {'id': 123, 'body': c.COMMENT_MARKER+' old revision',
+                    'user': {'login': 'github-actions[bot]'}}
+        with patch.object(c, 'api', return_value=[existing]) as api:
+            c.preview_comment(12, self.state)
+        self.assertEqual(api.call_args.args[:2], ('issues/comments/123', 'PATCH'))
+
+    def test_same_comment_does_not_send_another_notification(self):
+        with patch.object(c, 'api', return_value=[]) as api:
+            c.preview_comment(12, self.state)
+            body = api.call_args.args[2]['body']
+        existing = {'id': 123, 'body': body, 'user': {'login': 'github-actions[bot]'}}
+        with patch.object(c, 'api', return_value=[existing]) as api:
+            c.preview_comment(12, self.state)
+        self.assertEqual(api.call_count, 1)
+
+    def test_user_supplied_marker_is_not_modified(self):
+        spoof = {'id': 123, 'body': c.COMMENT_MARKER, 'user': {'login': 'outsider'}}
+        with patch.object(c, 'api', return_value=[spoof]) as api:
+            c.preview_comment(12, self.state)
+        self.assertEqual(api.call_args.args[1], 'POST')
+
+    def test_stopped_comment_removes_ready_link(self):
+        with patch.object(c, 'api', return_value=[]) as api:
+            c.preview_comment(12)
+        body=api.call_args.args[2]['body']
+        self.assertIn('Preview stopped', body)
+        self.assertNotIn('Open preview', body)
+
+    def test_existing_comment_is_found_on_later_pages(self):
+        page = [{'body': 'other', 'user': {'login': 'someone'}}]*100
+        existing = {'id': 124, 'body': c.COMMENT_MARKER, 'user': {'login': 'github-actions[bot]'}}
+        with patch.object(c, 'api', side_effect=[page, [existing], {}]) as api:
+            c.preview_comment(12, self.state)
+        self.assertEqual(api.call_args.args[:2], ('issues/comments/124', 'PATCH'))
+
+
 class Persistence(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

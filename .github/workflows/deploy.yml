@@ -50,6 +50,10 @@ jobs:
       (github.event_name != 'workflow_run' ||
        (github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_repository.full_name == github.repository))
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
     environment: development
     runs-on: [self-hosted, linux, x64, deploy]
     timeout-minutes: 20

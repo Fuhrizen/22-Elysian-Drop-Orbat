@@ -29,10 +29,12 @@ def command(args, extra=None):
     return subprocess.check_output(args, text=True, env={**env, **(extra or {})}).strip()
 
 
-def api(path):
+def api(path, method="GET", data=None):
     req = Request(f'https://api.github.com/repos/{REPOSITORY}/{path}', headers={
         'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-        'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+        'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json'}, method=method,
+        data=json.dumps(data).encode() if data is not None else None)
     with urlopen(req, timeout=30) as response:
         return json.load(response)
 
@@ -279,6 +281,35 @@ def summary(text):
             stream.write(text + '\n\n')
 
 
+COMMENT_MARKER = '<!-- orbat-preview -->'
+
+
+def preview_comment(number, state=None):
+    if type(number) is not int or number < 1:
+        raise ValueError('Invalid PR number')
+    if state:
+        body = (COMMENT_MARKER + '\n### Preview ready\n\n'
+                + f'**[Open preview]({state["origin"]})** - LAN access only.\n\n'
+                + f'Deployed revision: `{state["revision"]}`\n\n'
+                + 'This PR keeps its own database across updates. Production data is separate.')
+    else:
+        body = (COMMENT_MARKER + '\n### Preview stopped\n\n'
+                + 'The container and route are stopped. This PR database is retained for reopening.')
+    for page in range(1, 101):
+        comments = api(f'issues/{number}/comments?per_page=100&page={page}')
+        existing = next((comment for comment in comments
+                         if comment.get('user', {}).get('login') == 'github-actions[bot]'
+                         and COMMENT_MARKER in (comment.get('body') or '')), None)
+        if existing:
+            if existing['body'] != body:
+                api(f'issues/comments/{int(existing["id"])}', 'PATCH', {'body': body})
+            return
+        if len(comments) < 100:
+            api(f'issues/{number}/comments', 'POST', {'body': body})
+            return
+    raise RuntimeError('Incomplete comment inventory; refusing to create duplicate preview comment')
+
+
 def reconcile(mode):
     if not (ROOT / '.deploy-enabled').exists():
         summary('Deployment paused: /srv/orbat/.deploy-enabled is absent.')
@@ -312,6 +343,7 @@ def reconcile(mode):
         if target.name not in active:
             stop_preview(target)
             summary(f'{target.name}: stopped; database retained for reopening.')
+            preview_comment(int(target.name.removeprefix('pr-')))
     failures = []
     for name, pr in active.items():
         target = preview_root / name
@@ -329,6 +361,7 @@ def reconcile(mode):
             elif state := read(target / 'current.json'):
                 recover(target)
                 compose(target, state, 'up', '-d', '--wait', '--wait-timeout', '90')
+                smoke(target, state)
             else:
                 summary(f'{name}: waiting for first successful CI build.')
                 continue
@@ -339,6 +372,10 @@ def reconcile(mode):
     # Publish successfully committed state, including rollback state after a failed candidate.
     states = [state for p in preview_root.glob('pr-*') if p.name in active and (state := read(p / 'current.json'))]
     gateway(address, states)
+    for state in states:
+        number = int(state['origin'].split('://pr-', 1)[1].split('.', 1)[0])
+        if f'pr-{number}' not in failures:
+            preview_comment(number, state)
     if failures:
         raise RuntimeError('Some previews failed: ' + ', '.join(failures))
 
