@@ -8,7 +8,7 @@ import time
 def reconcile_gateway(root, address, states, command, preview_domain):
     directory = root / 'gateway'
     directory.mkdir(exist_ok=True)
-    routes = ['server { listen ' + address + ':8081 default_server; return 404; }']
+    routes = ['server { listen ' + address + ':8081 default_server; add_header X-Orbat-Preview-Gateway ready always; return 404; }']
     for state in states:
         host = state['origin'].removeprefix('https://')
         if not re.fullmatch(r'pr-[1-9][0-9]*\.' + re.escape(preview_domain), host):

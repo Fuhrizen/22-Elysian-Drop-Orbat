@@ -97,6 +97,46 @@ class Comments(unittest.TestCase):
         self.assertEqual(api.call_args.args[:2], ('issues/comments/124', 'PATCH'))
 
 
+class Ingress(unittest.TestCase):
+    def execute(self, second=None):
+        import io
+        import preview_ingress as ingress
+        state={'origin':'https://pr-12.22preview.ivenity.co.uk','revision':'a'*40}
+        payload=json.dumps({'status':'ok','revision':state['revision']})
+        responses=[io.StringIO(payload), second or io.StringIO(payload)]
+        with patch.object(ingress,'build_opener') as opener:
+            opener.return_value.open.side_effect=responses
+            return ingress.check_preview(state,'192.168.1.20')
+
+    def test_success_verifies_gateway_and_full_https(self):
+        self.assertIn('HTTPS passed',self.execute())
+
+    def test_dns_failure_explains_cloudflare_record(self):
+        import socket
+        from urllib.error import URLError
+        self.assertIn('Cloudflare',self.execute(URLError(socket.gaierror('missing'))))
+
+    def test_npm_access_denial_explains_access_list(self):
+        from urllib.error import HTTPError
+        self.assertIn('HTTP 403',self.execute(HTTPError('https://preview',403,'Forbidden',{},None)))
+
+    def test_empty_gateway_probe_checks_marker_on_deliberate_404(self):
+        import preview_ingress as ingress
+        from urllib.error import HTTPError
+        error=HTTPError('https://pr-0',404,'Not Found',{'X-Orbat-Preview-Gateway':'ready'},None)
+        with patch.object(ingress,'build_opener') as opener:
+            opener.return_value.open.side_effect=error
+            self.assertIn('NPM routing passed',ingress.check_gateway_ingress(c.PREVIEW_DOMAIN))
+
+    def test_removed_comment_has_no_stale_link_or_retention_claim(self):
+        with patch.object(c,'api',return_value=[]) as api:
+            c.preview_comment(12,deleted=True)
+        body=api.call_args.args[2]['body']
+        self.assertIn('Preview removed',body)
+        self.assertNotIn('Open preview',body)
+        self.assertNotIn('retained',body)
+
+
 class Gateway(unittest.TestCase):
     def execute(self, old_user=None, restarting=False):
         self.calls=[]
@@ -222,6 +262,39 @@ class Persistence(unittest.TestCase):
         self.assertTrue((self.target/'current.json').exists())
         self.assertEqual(compose.call_args.args[1]['project'], 'orbat-pr-12')
         with self.assertRaises(ValueError): c.stop_preview(self.root/'production')
+
+    def test_closed_pr_removes_only_its_preview_database(self):
+        (self.root/'.deploy-enabled').touch()
+        production=self.root/'production'
+        production.mkdir(); (production/'important.sqlite').write_text('production retained')
+        with patch.object(c,'ROOT',self.root), patch.object(c,'bind_address',return_value='192.168.1.20'), patch.object(c,'inventory',return_value=[]), patch.object(c,'api',return_value={'state':'closed'}), patch.object(c,'gateway'), patch.object(c,'check_gateway_ingress',return_value='fixture'), patch.object(c,'preview_comment') as comment, patch.object(c,'compose'), patch.object(c,'utility',side_effect=self.utility):
+            c.reconcile('preview')
+        self.assertFalse(self.target.exists())
+        self.assertEqual((production/'important.sqlite').read_text(),'production retained')
+        comment.assert_called_once_with(12,deleted=True)
+
+    def test_draft_pr_stops_container_but_keeps_database(self):
+        (self.root/'.deploy-enabled').touch()
+        with patch.object(c,'ROOT',self.root), patch.object(c,'bind_address',return_value='192.168.1.20'), patch.object(c,'inventory',return_value=[pr(draft=True)]), patch.object(c,'api') as api, patch.object(c,'gateway'), patch.object(c,'check_gateway_ingress',return_value='fixture'), patch.object(c,'preview_comment') as comment, patch.object(c,'compose') as compose:
+            c.reconcile('preview')
+        self.assertEqual(self.records(),['existing member'])
+        self.assertEqual(compose.call_args.args[2],'down')
+        api.assert_not_called()
+        comment.assert_called_once_with(12)
+
+    def test_missing_pr_status_never_deletes_data(self):
+        (self.root/'.deploy-enabled').touch()
+        with patch.object(c,'ROOT',self.root), patch.object(c,'bind_address',return_value='192.168.1.20'), patch.object(c,'inventory',return_value=[]), patch.object(c,'api',side_effect=RuntimeError('API unavailable')), patch.object(c,'gateway'):
+            with self.assertRaisesRegex(RuntimeError,'API unavailable'):
+                c.reconcile('preview')
+        self.assertEqual(self.records(),['existing member'])
+
+    def test_cleanup_refuses_production_and_symlink_targets(self):
+        with patch.object(c,'ROOT',self.root):
+            with self.assertRaises(ValueError): c.remove_preview(self.root/'production')
+            link=self.root/'previews/pr-99'; link.symlink_to(self.target,target_is_directory=True)
+            with self.assertRaises(ValueError): c.remove_preview(link)
+        self.assertTrue(self.db.exists())
 
     def test_reopen_reuses_database_port_and_project(self):
         with patch.object(c, 'compose') as compose, patch.object(c, 'smoke'):

@@ -1,15 +1,28 @@
 name: Prepare Node and pnpm
-description: Use the project's pinned package manager, cache its store and install the locked dependencies.
+description: Install the pinned package manager and cache locked dependencies using GitHub-owned actions.
 runs:
   using: composite
   steps:
-    - name: Install the pinned pnpm version
-      uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-    - name: Use Node 24 and restore the pnpm cache
+    - name: Use Node 24
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: '24'
-        cache: pnpm
+    - name: Install the project's pinned pnpm version
+      id: pnpm
+      shell: bash
+      run: |
+        PACKAGE_MANAGER=$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).packageManager")
+        [[ "$PACKAGE_MANAGER" =~ ^pnpm@[0-9]+\.[0-9]+\.[0-9]+$ ]]
+        npm install --global "$PACKAGE_MANAGER"
+        echo "version=${PACKAGE_MANAGER#pnpm@}" >> "$GITHUB_OUTPUT"
+        echo "store=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+    - name: Restore the pnpm store
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: ${{ steps.pnpm.outputs.store }}
+        key: ${{ runner.os }}-node24-pnpm${{ steps.pnpm.outputs.version }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-node24-pnpm${{ steps.pnpm.outputs.version }}-
     - name: Install the exact lockfile
       shell: bash
       run: pnpm install --frozen-lockfile
