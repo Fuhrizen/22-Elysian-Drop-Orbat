@@ -149,7 +149,7 @@ sql.prepare("UPDATE settings SET value=? WHERE key='orbat_layout'").run(JSON.str
 sql.prepare("INSERT INTO settings(key,value) VALUES ('slot_role_edited','Medicae')").run();
 assert.equal((await post({action:'operation_config',mode:'main',resetLayout:true,confirmedLayout:true})).status,200);
 const restored=(await get()).data.layout;
-assert.equal(restored.slots.length,19);assert.equal(restored.slots.filter(s=>s.section==='spear1').length,8);assert.equal(restored.slots.filter(s=>s.section==='spear2').length,8);assert.equal(restored.slots.filter(s=>s.section==='shield').length,2);
+assert.equal(restored.slots.length,20);assert.equal(restored.slots.filter(s=>s.section==='command').length,2);assert.equal(restored.slots.filter(s=>s.section==='spear1').length,8);assert.equal(restored.slots.filter(s=>s.section==='spear2').length,8);assert.equal(restored.slots.filter(s=>s.section==='shield').length,2);
 assert.equal(sql.prepare("SELECT value FROM settings WHERE key='slot_role_edited'").get(),undefined);
 assert.equal(sql.prepare("SELECT value FROM settings WHERE key='phrase_ic'").get().value,oldKey);
 assert.equal((await post({action:'claim',slot:'trooper1',user:r.data.id})).status,200);
