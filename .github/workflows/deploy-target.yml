@@ -1,6 +1,9 @@
 name: Deploy target
 on:
   workflow_call:
+    secrets:
+      admin_secret_key:
+        required: true
     inputs:
       mode:
         description: production or preview
