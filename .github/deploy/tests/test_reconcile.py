@@ -142,6 +142,14 @@ class Persistence(unittest.TestCase):
             c.reconcile('production')
         api.assert_not_called()
 
+    def test_main_recovers_interruption_even_when_new_ci_is_pending(self):
+        (self.root/'.deploy-enabled').touch()
+        (self.root/'production').mkdir()
+        (self.root/'production/.migration-approved').touch()
+        with patch.object(c, 'ROOT', self.root), patch.object(c, 'bind_address', return_value='192.168.1.20'), patch.object(c, 'recover') as recover, patch.object(c, 'api', return_value={'commit': {'sha': 'c'*40}}), patch.object(c, 'successful_run', return_value=None):
+            c.reconcile('production')
+        recover.assert_called_once_with(self.root/'production')
+
     def test_disabled_controller_changes_nothing(self):
         with patch.object(c, 'ROOT', self.root), patch.object(c, 'bind_address') as address:
             c.reconcile('preview')

@@ -290,6 +290,7 @@ def reconcile(mode):
         if not (target / '.migration-approved').exists():
             summary('Main paused until the database import is approved.')
             return
+        recover(target)
         revision = api('branches/main')['commit']['sha']
         run = successful_run(revision, 'main', 'push') or successful_run(revision, 'main', 'workflow_dispatch')
         if not run:
