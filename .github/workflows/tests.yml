@@ -1,0 +1,24 @@
+name: Tests
+'on':
+  workflow_call: null
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: Verify application and dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Prepare / Check out the tested revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Prepare / Node and locked dependencies
+        uses: ./.github/actions/setup
+      - name: Verify / API, permissions and SQLite regressions
+        run: pnpm test
+      - name: Verify / Known high and critical dependency vulnerabilities
+        run: pnpm audit --audit-level=high
+      - name: Verify / Deployment selection, persistence and recovery
+        run: python3 -m unittest discover -s .github/deploy/tests -v

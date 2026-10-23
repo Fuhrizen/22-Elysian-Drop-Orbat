@@ -12,9 +12,13 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
-  essentials:
-    name: Essentials
-    uses: ./.github/workflows/essentials.yml
+  tests:
+    name: Tests
+    uses: ./.github/workflows/tests.yml
+  build:
+    name: Build
+    needs: tests
+    uses: ./.github/workflows/build.yml
     permissions:
       contents: read
       packages: write

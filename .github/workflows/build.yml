@@ -1,28 +1,11 @@
-name: Essentials
-on:
-  workflow_call:
+name: Build
+'on':
+  workflow_call: null
 permissions:
   contents: read
 jobs:
-  verify:
-    name: Verify application and dependencies
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Prepare / Check out the tested revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - name: Prepare / Node and locked dependencies
-        uses: ./.github/actions/setup
-      - name: Verify / API, permissions and SQLite regressions
-        run: pnpm test
-      - name: Verify / Known high and critical dependency vulnerabilities
-        run: pnpm audit --audit-level=high
-  runtime:
-    name: Build and verify production image
-    needs: verify
+  image:
+    name: Build, smoke-test and publish image
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -33,7 +16,7 @@ jobs:
       REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Prepare / Check out the tested revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ env.REVISION }}
           persist-credentials: false
@@ -46,11 +29,8 @@ jobs:
       - name: Verify / Disposable image, readiness and access controls
         run: bash scripts/ci-image.sh smoke
       - name: Publish / Tested image for main or an internal PR
-        if: >-
-          github.event_name != 'pull_request' ||
-          (github.actor != 'dependabot[bot]' &&
-           github.event.pull_request.head.repo.full_name == github.repository &&
-           !github.event.pull_request.draft)
+        if: github.event_name != 'pull_request' || (github.actor != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name
+          == github.repository && !github.event.pull_request.draft)
         env:
           GHCR_TOKEN: ${{ github.token }}
         run: |
@@ -59,4 +39,14 @@ jobs:
           trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
           docker tag orbat-ci:tested "$IMAGE"
           docker push "$IMAGE"
-          printf '### Tested image\n`%s`\n\nRevision: `%s`\n' "$IMAGE" "$REVISION" >> "$GITHUB_STEP_SUMMARY"
+          PACKAGE_NAME="${GITHUB_REPOSITORY#*/}"
+          PACKAGE_URL="https://github.com/${GITHUB_REPOSITORY}/pkgs/container/${PACKAGE_NAME,,}"
+          {
+            printf '### Tested Docker image\n\n'
+            printf '[Open container package](%s)\n\n' "$PACKAGE_URL"
+            printf '**Image:** `%s`\n\n' "$IMAGE"
+            printf '**Source revision:** `%s`\n\n' "$REVISION"
+            printf 'Pull this exact tested image on the VM:\n\n'
+            printf '```bash\ndocker pull %s\n```\n' "$IMAGE"
+            printf '\nImage publication is complete; deployment is handled by the Deploy workflow.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
