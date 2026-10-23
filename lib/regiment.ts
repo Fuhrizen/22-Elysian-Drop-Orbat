@@ -1,5 +1,6 @@
 export const slots = [
     { id: 'gm', name: 'Gamemaster', code: 'CMD', protected: true, type: 'command', section: 'command' },
+    { id: 'gm2', name: 'Gamemaster', code: 'CMD/02', protected: true, type: 'command', section: 'command' },
     ...[1, 2].flatMap(n => [
         { id: n === 1 ? 'ic' : 'ic2', name: 'Section Leader', code: `S${n}/01`, protected: true, type: 'leader', section: `spear${n}` },
         ...(n === 1 ? [{ id: 'vox', name: 'Vox Operator', code: 'S1/02', protected: false, type: 'vox', section: 'spear1' }] : []),
@@ -11,11 +12,11 @@ export const slots = [
     ]),
     ...[1, 2].map(n => ({ id: n === 1 ? 'shield' : 'shield2', name: 'Pilot ' + n, code: 'FLT/0' + n, protected: true, type: 'pilot', section: 'shield' }))
 ];
-export function phraseRole(id: string) { return id === 'shield2' ? 'shield' : id === 'ic2' ? 'ic' : id; }
-export const protectedRoles = slots.filter(s => s.protected && s.id !== 'shield2' && s.id !== 'ic2');
+export function phraseRole(id: string) { return id === 'gm2' ? 'gm' : id === 'shield2' ? 'shield' : id === 'ic2' ? 'ic' : id; }
+export const protectedRoles = slots.filter(s => s.protected && s.id !== 'gm2' && s.id !== 'shield2' && s.id !== 'ic2');
 export type OperationConfig = { title: string; mode: 'main' | 'open'; locked: boolean };
 export const defaultOperationConfig: OperationConfig = { title: 'Regimental operation', mode: 'main', locked: false };
-export const canLockSlot = (s:{id:string;type?:string}) => !['gm','ic','ic2','shield','shield2'].includes(s.id) && !['command','leader','pilot'].includes(s.type || '');
+export const canLockSlot = (s:{id:string;type?:string}) => !['gm','gm2','ic','ic2','shield','shield2'].includes(s.id) && !['command','leader','pilot'].includes(s.type || '');
 export type Person = {
     medal_count?: number;
     id: string;
@@ -99,4 +100,4 @@ export function validRolePolicy(value: unknown): value is RolePolicy {
     return !!p && typeof p.enabled==='boolean' && typeof p.canEditRoles==='boolean' && typeof p.canEditAssignments==='boolean' && ['none','section','all'].includes(p.editScope);
 }
 
-export const slotRoleOptions = (s:{id:string;section?:string}) => ['gm','ic','ic2'].includes(s.id) ? [] : s.section==='shield' ? ['Pilot','Vox Operator'] : [...editableRoles];
+export const slotRoleOptions = (s:{id:string;section?:string}) => s.id==='gm2' ? ['Gamemaster','Vox Operator'] : ['gm','ic','ic2'].includes(s.id) ? [] : s.section==='shield' ? ['Pilot','Vox Operator'] : [...editableRoles];

@@ -47,6 +47,39 @@ class Selection(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'incomplete'): c.inventory()
 
 
+class Promotion(unittest.TestCase):
+    def merged(self):
+        return {**pr(), 'merged_at':'2026-10-23', 'merge_commit_sha':'b'*40}
+
+    def test_squashed_main_uses_successful_pr_build_without_rebuilding(self):
+        def api(path):
+            if path.startswith('commits/'): return [self.merged()]
+            return {'tree':{'sha':'same-tree'}}
+        run={'id':42,'run_attempt':1}
+        with patch.object(c,'api',side_effect=api), patch.object(c,'successful_run',return_value=run) as build:
+            self.assertEqual(c.verified_main_release('b'*40),(run,'a'*40,12))
+        build.assert_called_once_with('a'*40,'feature','pull_request')
+
+    def test_merge_with_untested_tree_keeps_current_production(self):
+        def api(path):
+            if path.startswith('commits/'): return [self.merged()]
+            return {'tree':{'sha':path}}
+        with patch.object(c,'api',side_effect=api), patch.object(c,'successful_run') as build:
+            self.assertIsNone(c.verified_main_release('b'*40))
+        build.assert_not_called()
+
+    def test_direct_push_without_merged_pr_is_not_promoted(self):
+        with patch.object(c,'api',return_value=[]), patch.object(c,'successful_run') as build:
+            self.assertIsNone(c.verified_main_release('b'*40))
+        build.assert_not_called()
+
+    def test_failed_or_pending_pr_ci_is_not_promoted(self):
+        def api(path):
+            return [self.merged()] if path.startswith('commits/') else {'tree':{'sha':'same-tree'}}
+        with patch.object(c,'api',side_effect=api), patch.object(c,'successful_run',return_value=None):
+            self.assertIsNone(c.verified_main_release('b'*40))
+
+
 class Comments(unittest.TestCase):
     def setUp(self):
         self.state = {'origin': 'https://pr-12.22preview.ivenity.co.uk', 'revision': 'a'*40}
@@ -336,7 +369,7 @@ class Persistence(unittest.TestCase):
         (self.root/'.deploy-enabled').touch()
         (self.root/'production').mkdir()
         (self.root/'production/.migration-approved').touch()
-        with patch.object(c, 'ROOT', self.root), patch.object(c, 'bind_address', return_value='192.168.1.20'), patch.object(c, 'recover') as recover, patch.object(c, 'api', return_value={'commit': {'sha': 'c'*40}}), patch.object(c, 'successful_run', return_value=None):
+        with patch.object(c, 'ROOT', self.root), patch.object(c, 'bind_address', return_value='192.168.1.20'), patch.object(c, 'recover') as recover, patch.object(c, 'api', return_value={'commit': {'sha': 'c'*40}}), patch.object(c, 'verified_main_release', return_value=None):
             c.reconcile('production')
         recover.assert_called_once_with(self.root/'production')
 
