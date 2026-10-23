@@ -120,6 +120,14 @@ class Ingress(unittest.TestCase):
         from urllib.error import HTTPError
         self.assertIn('HTTP 403',self.execute(HTTPError('https://preview',403,'Forbidden',{},None)))
 
+    def test_empty_gateway_probe_checks_marker_on_deliberate_404(self):
+        import preview_ingress as ingress
+        from urllib.error import HTTPError
+        error=HTTPError('https://pr-0',404,'Not Found',{'X-Orbat-Preview-Gateway':'ready'},None)
+        with patch.object(ingress,'build_opener') as opener:
+            opener.return_value.open.side_effect=error
+            self.assertIn('NPM routing passed',ingress.check_gateway_ingress(c.PREVIEW_DOMAIN))
+
     def test_removed_comment_has_no_stale_link_or_retention_claim(self):
         with patch.object(c,'api',return_value=[]) as api:
             c.preview_comment(12,deleted=True)
@@ -259,7 +267,7 @@ class Persistence(unittest.TestCase):
         (self.root/'.deploy-enabled').touch()
         production=self.root/'production'
         production.mkdir(); (production/'important.sqlite').write_text('production retained')
-        with patch.object(c,'ROOT',self.root), patch.object(c,'bind_address',return_value='192.168.1.20'), patch.object(c,'inventory',return_value=[]), patch.object(c,'api',return_value={'state':'closed'}), patch.object(c,'gateway'), patch.object(c,'preview_comment') as comment, patch.object(c,'compose'), patch.object(c,'utility',side_effect=self.utility):
+        with patch.object(c,'ROOT',self.root), patch.object(c,'bind_address',return_value='192.168.1.20'), patch.object(c,'inventory',return_value=[]), patch.object(c,'api',return_value={'state':'closed'}), patch.object(c,'gateway'), patch.object(c,'check_gateway_ingress',return_value='fixture'), patch.object(c,'preview_comment') as comment, patch.object(c,'compose'), patch.object(c,'utility',side_effect=self.utility):
             c.reconcile('preview')
         self.assertFalse(self.target.exists())
         self.assertEqual((production/'important.sqlite').read_text(),'production retained')
@@ -267,7 +275,7 @@ class Persistence(unittest.TestCase):
 
     def test_draft_pr_stops_container_but_keeps_database(self):
         (self.root/'.deploy-enabled').touch()
-        with patch.object(c,'ROOT',self.root), patch.object(c,'bind_address',return_value='192.168.1.20'), patch.object(c,'inventory',return_value=[pr(draft=True)]), patch.object(c,'api') as api, patch.object(c,'gateway'), patch.object(c,'preview_comment') as comment, patch.object(c,'compose') as compose:
+        with patch.object(c,'ROOT',self.root), patch.object(c,'bind_address',return_value='192.168.1.20'), patch.object(c,'inventory',return_value=[pr(draft=True)]), patch.object(c,'api') as api, patch.object(c,'gateway'), patch.object(c,'check_gateway_ingress',return_value='fixture'), patch.object(c,'preview_comment') as comment, patch.object(c,'compose') as compose:
             c.reconcile('preview')
         self.assertEqual(self.records(),['existing member'])
         self.assertEqual(compose.call_args.args[2],'down')

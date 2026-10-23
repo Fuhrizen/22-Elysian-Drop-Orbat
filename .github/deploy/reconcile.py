@@ -17,7 +17,7 @@ from urllib.request import Request, urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from preview_gateway import reconcile_gateway
 from preview_comments import COMMENT_MARKER, update_comment
-from preview_ingress import check_preview
+from preview_ingress import check_preview, check_gateway_ingress
 
 ROOT = Path('/srv/orbat')
 REPOSITORY = os.environ.get('GITHUB_REPOSITORY', 'Fuhrizen/22-Elysian-Drop-Orbat')
@@ -346,6 +346,7 @@ def reconcile(mode):
     # Publish successfully committed state, including rollback state after a failed candidate.
     states = [state for p in preview_root.glob('pr-*') if p.name in active and (state := read(p / 'current.json'))]
     gateway(address, states)
+    summary('Preview ingress: ' + check_gateway_ingress(PREVIEW_DOMAIN))
     for state in states:
         number = int(state['origin'].split('://pr-', 1)[1].split('.', 1)[0])
         if f'pr-{number}' not in failures:

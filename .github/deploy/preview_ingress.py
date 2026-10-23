@@ -34,3 +34,23 @@ def check_preview(state, address):
     except (OSError, ValueError):
         return 'Gateway route passed; HTTPS did not return the expected revision. Check the NPM upstream.'
     return 'Gateway route and HTTPS passed from the deployment VM. Preview access is LAN only.'
+
+
+def check_gateway_ingress(domain):
+    # An unknown PR host should reach our deliberate 404, even with no active previews.
+    opener = build_opener(ProxyHandler({}), HTTPSHandler(context=ssl.create_default_context()))
+    try:
+        with opener.open(f'https://pr-0.{domain}/', timeout=5):
+            return 'Unexpected HTTPS response; verify the wildcard NPM upstream is this VM port 8081.'
+    except HTTPError as error:
+        if error.code == 404 and error.headers.get('X-Orbat-Preview-Gateway') == 'ready':
+            return 'Wildcard DNS, TLS and NPM routing passed from the VM; unknown/closed PRs correctly return 404.'
+        return f'HTTPS returned HTTP {error.code} without the gateway marker; check the NPM host, LAN access list and upstream.'
+    except URLError as error:
+        if isinstance(error.reason, socket.gaierror):
+            return 'DNS lookup failed on the VM; configure DNS-only *.22preview.ivenity.co.uk to the NPM LAN address.'
+        if isinstance(error.reason, ssl.SSLCertVerificationError):
+            return 'TLS certificate verification failed; configure the NPM preview wildcard certificate.'
+        return 'HTTPS connection failed from the VM; check wildcard DNS, NPM and firewall access to port 8081.'
+    except OSError:
+        return 'HTTPS connection failed from the VM; check wildcard DNS, NPM and firewall access to port 8081.'
