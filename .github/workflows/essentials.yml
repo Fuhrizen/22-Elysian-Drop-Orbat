@@ -59,4 +59,13 @@ jobs:
           trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
           docker tag orbat-ci:tested "$IMAGE"
           docker push "$IMAGE"
-          printf '### Tested image\n`%s`\n\nRevision: `%s`\n' "$IMAGE" "$REVISION" >> "$GITHUB_STEP_SUMMARY"
+          PACKAGE_URL="https://github.com/${GITHUB_REPOSITORY%%/*}/${GITHUB_REPOSITORY#*/}/pkgs/container/${GITHUB_REPOSITORY#*/}"
+          {
+            printf '### Tested Docker image\n\n'
+            printf '[Open container package](%s)\n\n' "$PACKAGE_URL"
+            printf '**Image:** `%s`\n\n' "$IMAGE"
+            printf '**Source revision:** `%s`\n\n' "$REVISION"
+            printf 'Pull this exact tested image on the VM:\n\n'
+            printf '\`\`\`bash\ndocker pull %s\n\`\`\`\n' "$IMAGE"
+            printf '\nImage publication is complete; deployment is handled by the private controller.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
