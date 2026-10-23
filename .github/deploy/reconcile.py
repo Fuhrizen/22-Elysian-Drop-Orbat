@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from preview_gateway import reconcile_gateway
 from preview_comments import COMMENT_MARKER, update_comment
+from preview_ingress import check_preview
 
 ROOT = Path('/srv/orbat')
 REPOSITORY = os.environ.get('GITHUB_REPOSITORY', 'Fuhrizen/22-Elysian-Drop-Orbat')
@@ -239,6 +240,15 @@ def stop_preview(target):
     # Keep current.json, bootstrap key, backups and the entire data directory for reopening.
 
 
+def remove_preview(target):
+    if (not re.fullmatch(r'pr-[1-9][0-9]*', target.name) or target.is_symlink()
+            or target.parent.resolve() != (ROOT / 'previews').resolve()):
+        raise ValueError('Refusing to delete a non-preview path')
+    stop_preview(target)
+    utility(target, '-e', "const f=require('node:fs');for(const n of ['data','backups'])f.rmSync('/target/'+n,{recursive:true,force:true})")
+    shutil.rmtree(target)
+
+
 def allocate_port(target, targets):
     previous = read(target / 'current.json')
     if previous:
@@ -261,8 +271,8 @@ def summary(text):
             stream.write(text + '\n\n')
 
 
-def preview_comment(number, state=None):
-    update_comment(api, number, state)
+def preview_comment(number, state=None, deleted=False):
+    update_comment(api, number, state, deleted=deleted)
 
 
 def reconcile(mode):
@@ -287,7 +297,8 @@ def reconcile(mode):
         return
     if mode != 'preview':
         raise ValueError('Expected production or preview')
-    active = {target_name(pr): pr for pr in inventory() if eligible(pr)}
+    open_prs = {target_name(pr): pr for pr in inventory()}
+    active = {name: pr for name, pr in open_prs.items() if eligible(pr)}
     preview_root = ROOT / 'previews'
     preview_root.mkdir(exist_ok=True)
     targets = list(preview_root.glob('pr-*'))
@@ -296,9 +307,17 @@ def reconcile(mode):
     gateway(address, states)
     for target in targets:
         if target.name not in active:
-            stop_preview(target)
-            summary(f'{target.name}: stopped; database retained for reopening.')
-            preview_comment(int(target.name.removeprefix('pr-')))
+            number = int(target.name.removeprefix('pr-'))
+            # Absence from the eligible list alone is not permission to delete data.
+            pr = open_prs.get(target.name) or api(f'pulls/{number}')
+            if pr['state'] == 'closed':
+                remove_preview(target)
+                summary(f'{target.name}: closed/merged; container, database and backups removed.')
+                preview_comment(number, deleted=True)
+            else:
+                stop_preview(target)
+                summary(f'{target.name}: stopped; database retained while PR remains open.')
+                preview_comment(number)
     failures = []
     for name, pr in active.items():
         target = preview_root / name
@@ -330,6 +349,8 @@ def reconcile(mode):
     for state in states:
         number = int(state['origin'].split('://pr-', 1)[1].split('.', 1)[0])
         if f'pr-{number}' not in failures:
+            state = {**state, 'ingress': check_preview(state, address)}
+            summary(f'PR #{number} ingress: {state["ingress"]}')
             preview_comment(number, state)
     if failures:
         raise RuntimeError('Some previews failed: ' + ', '.join(failures))
