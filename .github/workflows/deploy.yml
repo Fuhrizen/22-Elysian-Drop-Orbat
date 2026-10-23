@@ -1,14 +1,13 @@
 name: Deploy
-on:
+'on':
   workflow_run:
-    workflows: [CI]
-    types: [completed]
-  pull_request_target:
-    branches: [main]
-    types: [closed, converted_to_draft, reopened, ready_for_review]
+    workflows:
+      - CI
+    types:
+      - completed
   schedule:
     - cron: '*/5 * * * *'
-  workflow_dispatch:
+  workflow_dispatch: null
 permissions:
   contents: read
   actions: read
@@ -19,52 +18,26 @@ concurrency:
 jobs:
   production:
     name: Main / Preserve data and reconcile production
-    if: >-
-      github.ref == 'refs/heads/main' &&
-      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+    if: |-
+      github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.head_repository.full_name == github.repository &&
         github.event.workflow_run.event != 'pull_request'))
-    environment:
-      name: main
-      url: https://22orbat.ivenity.co.uk
-    runs-on: [self-hosted, linux, x64, deploy]
-    timeout-minutes: 20
-    steps:
-      - name: Prepare / Check out trusted main controller only
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: main
-          persist-credentials: false
-      - name: Deploy / Backup, update and verify main
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ORBAT_ADMIN_ACCESS_KEY: ${{ secrets.admin_secret_key }}
-        run: python3 .github/deploy/reconcile.py production
+    uses: ./.github/workflows/deploy-target.yml
+    with:
+      mode: production
   previews:
     name: Development / Sync PR containers and retain their databases
     needs: production
-    if: >-
-      always() && !cancelled() && github.ref == 'refs/heads/main' &&
-      (github.event_name != 'workflow_run' ||
+    if: |-
+      always() && !cancelled() && github.ref == 'refs/heads/main' && (github.event_name != 'workflow_run' ||
        (github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_repository.full_name == github.repository))
     permissions:
       contents: read
       actions: read
       pull-requests: write
-    environment: development
-    runs-on: [self-hosted, linux, x64, deploy]
-    timeout-minutes: 20
-    steps:
-      - name: Prepare / Check out trusted main controller only
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: main
-          persist-credentials: false
-      - name: Deploy / Reconcile PR number, exact image and persistent data
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ORBAT_ADMIN_ACCESS_KEY: ${{ secrets.admin_secret_key }}
-        run: python3 .github/deploy/reconcile.py preview
+    uses: ./.github/workflows/deploy-target.yml
+    with:
+      mode: preview

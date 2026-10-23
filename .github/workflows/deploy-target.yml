@@ -1,0 +1,34 @@
+name: Deploy target
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: production or preview
+        required: true
+        type: string
+jobs:
+  reconcile:
+    name: Reconcile ${{ inputs.mode }}
+    environment: ${{ inputs.mode == 'production' && 'main' || 'development' }}
+    runs-on: [self-hosted, linux, x64, deploy]
+    timeout-minutes: 20
+    steps:
+      - name: Prepare / Check out trusted main deployment code only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: |
+            .github/deploy
+            scripts
+      - name: Deploy / Reconcile persistent containers and routes
+        env:
+          DEPLOY_MODE: ${{ inputs.mode }}
+          GH_TOKEN: ${{ github.token }}
+          ORBAT_ADMIN_ACCESS_KEY: ${{ secrets.admin_secret_key }}
+        run: |
+          case "$DEPLOY_MODE" in
+            production|preview) ;;
+            *) echo 'Invalid deployment target' >&2; exit 1 ;;
+          esac
+          python3 .github/deploy/reconcile.py "$DEPLOY_MODE"

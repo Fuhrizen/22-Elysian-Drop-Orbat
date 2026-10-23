@@ -17,8 +17,9 @@ try:
     with tempfile.TemporaryDirectory() as directory:
         c.ROOT = Path(directory)
         # Create, then reconcile/reload the actual non-root container.
-        for _ in range(2):
-            c.gateway('127.0.0.1', [])
+        route = {'origin': 'https://pr-1.22preview.ivenity.co.uk', 'port': 32001}
+        for routes in ([], [route], [route]):
+            c.gateway('127.0.0.1', routes)
             for attempt in range(30):
                 try:
                     with urlopen('http://127.0.0.1:8081/', timeout=1) as response:
