@@ -1,4 +1,5 @@
 name: CI
+run-name: "PR #${{ github.event.pull_request.number }}"
 on:
   pull_request:
     branches: [main]
@@ -6,12 +7,12 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
   tests:
     name: Tests
-    if: ${{ !github.event.pull_request.draft }}
+    if: github.event.pull_request.state == 'open' && !github.event.pull_request.draft
     uses: ./.github/workflows/tests.yml
   build:
     name: Build

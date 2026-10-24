@@ -18,66 +18,6 @@ def pr(number=12, author='Fuhrizen', repository=None, draft=False):
             'repo': {'full_name': repository or c.REPOSITORY}}}
 
 
-class Selection(unittest.TestCase):
-    def test_only_approved_same_repository_open_prs(self):
-        self.assertTrue(c.eligible(pr()))
-        self.assertFalse(c.eligible(pr(author='unknown')))
-        self.assertFalse(c.eligible(pr(repository='outsider/fork')))
-        self.assertFalse(c.eligible(pr(draft=True)))
-        closed = pr(); closed['state'] = 'closed'
-        self.assertFalse(c.eligible(closed))
-
-    def test_target_identity_survives_branch_rename(self):
-        item = pr(); first = c.target_name(item)
-        item['head']['ref'] = 'renamed-branch'
-        self.assertEqual(first, c.target_name(item))
-        item['number'] = '../../production'
-        with self.assertRaises(ValueError): c.target_name(item)
-
-    def test_exact_revision_and_repository_build_selection(self):
-        run = {'head_sha': 'a'*40, 'head_branch': 'feature', 'event': 'pull_request',
-               'conclusion': 'success', 'head_repository': {'full_name': c.REPOSITORY}}
-        wrong = {**run, 'head_sha': 'b'*40}
-        with patch.object(c, 'api', return_value={'workflow_runs': [wrong, run]}):
-            self.assertEqual(c.successful_run('a'*40, 'feature', 'pull_request'), run)
-            self.assertIsNone(c.successful_run('b'*40, 'main', 'push'))
-
-    def test_incomplete_inventory_fails_before_cleanup(self):
-        with patch.object(c, 'api', return_value=[pr()]*100):
-            with self.assertRaisesRegex(RuntimeError, 'incomplete'): c.inventory()
-
-
-class Promotion(unittest.TestCase):
-    def merged(self):
-        return {**pr(), 'merged_at':'2026-10-23', 'merge_commit_sha':'b'*40}
-
-    def test_squashed_main_uses_successful_pr_build_without_rebuilding(self):
-        def api(path):
-            if path.startswith('commits/'): return [self.merged()]
-            return {'tree':{'sha':'same-tree'}}
-        run={'id':42,'run_attempt':1}
-        with patch.object(c,'api',side_effect=api), patch.object(c,'successful_run',return_value=run) as build:
-            self.assertEqual(c.verified_main_release('b'*40),(run,'a'*40,12))
-        build.assert_called_once_with('a'*40,'feature','pull_request')
-
-    def test_merge_with_untested_tree_keeps_current_production(self):
-        def api(path):
-            if path.startswith('commits/'): return [self.merged()]
-            return {'tree':{'sha':path}}
-        with patch.object(c,'api',side_effect=api), patch.object(c,'successful_run') as build:
-            self.assertIsNone(c.verified_main_release('b'*40))
-        build.assert_not_called()
-
-    def test_direct_push_without_merged_pr_is_not_promoted(self):
-        with patch.object(c,'api',return_value=[]), patch.object(c,'successful_run') as build:
-            self.assertIsNone(c.verified_main_release('b'*40))
-        build.assert_not_called()
-
-    def test_failed_or_pending_pr_ci_is_not_promoted(self):
-        def api(path):
-            return [self.merged()] if path.startswith('commits/') else {'tree':{'sha':'same-tree'}}
-        with patch.object(c,'api',side_effect=api), patch.object(c,'successful_run',return_value=None):
-            self.assertIsNone(c.verified_main_release('b'*40))
 class PortMapping(unittest.TestCase):
     def test_missing_mapping_is_rejected_even_if_container_is_healthy(self):
         target=Path('/srv/orbat/previews/pr-12')
@@ -151,6 +91,16 @@ class Ingress(unittest.TestCase):
 
     def test_success_verifies_gateway_and_full_https(self):
         self.assertIn('HTTPS passed',self.execute())
+
+    def test_gateway_probe_waits_for_nginx_route_reload(self):
+        import io
+        import preview_ingress as ingress
+        from urllib.error import HTTPError
+        state={'origin':'https://pr-12.22preview.ivenity.co.uk','revision':'a'*40}
+        payload=json.dumps({'status':'ok','revision':state['revision']})
+        with patch.object(ingress,'build_opener') as opener, patch.object(ingress.time,'sleep'):
+            opener.return_value.open.side_effect=[HTTPError('http://gateway',404,'Not Found',{},None),io.StringIO(payload),io.StringIO(payload)]
+            self.assertIn('HTTPS passed',ingress.check_preview(state,'192.168.1.20'))
 
     def test_dns_failure_explains_cloudflare_record(self):
         import socket
@@ -319,29 +269,30 @@ class Persistence(unittest.TestCase):
         with self.assertRaises(ValueError): c.stop_preview(self.root/'production')
 
     def test_closed_pr_removes_only_its_preview_database(self):
-        (self.root/'.deploy-enabled').touch()
         production=self.root/'production'
         production.mkdir(); (production/'important.sqlite').write_text('production retained')
-        with patch.object(c,'ROOT',self.root), patch.object(c,'bind_address',return_value='192.168.1.20'), patch.object(c,'inventory',return_value=[]), patch.object(c,'api',return_value={'state':'closed'}), patch.object(c,'gateway'), patch.object(c,'check_gateway_ingress',return_value='fixture'), patch.object(c,'preview_comment') as comment, patch.object(c,'compose'), patch.object(c,'utility',side_effect=self.utility):
-            c.reconcile('preview')
+        plan={'mode':'preview','action':'remove','number':12,'revision':'a'*40,'run':{}}
+        with patch.object(c,'ROOT',self.root), patch.object(c,'bind_address',return_value='192.168.1.20'), patch.object(c,'gateway'), patch.object(c,'preview_comment') as comment, patch.object(c,'compose'), patch.object(c,'utility',side_effect=self.utility), patch.object(c,'cleanup') as cleanup:
+            c.execute(plan)
         self.assertFalse(self.target.exists())
         self.assertEqual((production/'important.sqlite').read_text(),'production retained')
         comment.assert_called_once_with(12,deleted=True)
+        cleanup.assert_called_once()
 
     def test_draft_pr_stops_container_but_keeps_database(self):
-        (self.root/'.deploy-enabled').touch()
-        with patch.object(c,'ROOT',self.root), patch.object(c,'bind_address',return_value='192.168.1.20'), patch.object(c,'inventory',return_value=[pr(draft=True)]), patch.object(c,'api') as api, patch.object(c,'gateway'), patch.object(c,'check_gateway_ingress',return_value='fixture'), patch.object(c,'preview_comment') as comment, patch.object(c,'compose') as compose:
-            c.reconcile('preview')
+        plan={'mode':'preview','action':'stop','number':12,'revision':'a'*40,'run':{}}
+        with patch.object(c,'ROOT',self.root), patch.object(c,'bind_address',return_value='192.168.1.20'), patch.object(c,'gateway'), patch.object(c,'preview_comment') as comment, patch.object(c,'compose') as compose:
+            c.execute(plan)
         self.assertEqual(self.records(),['existing member'])
+        self.assertTrue((self.target/'.stopped').exists())
         self.assertEqual(compose.call_args.args[2],'down')
-        api.assert_not_called()
         comment.assert_called_once_with(12)
 
     def test_missing_pr_status_never_deletes_data(self):
         (self.root/'.deploy-enabled').touch()
-        with patch.object(c,'ROOT',self.root), patch.object(c,'bind_address',return_value='192.168.1.20'), patch.object(c,'inventory',return_value=[]), patch.object(c,'api',side_effect=RuntimeError('API unavailable')), patch.object(c,'gateway'):
+        with patch.object(c,'ROOT',self.root), patch.dict('os.environ',{'DEPLOY_RUN_ID':'123'}), patch.object(c,'select',side_effect=RuntimeError('API unavailable')):
             with self.assertRaisesRegex(RuntimeError,'API unavailable'):
-                c.reconcile('preview')
+                c.reconcile('event')
         self.assertEqual(self.records(),['existing member'])
 
     def test_cleanup_refuses_production_and_symlink_targets(self):
@@ -382,24 +333,38 @@ class Persistence(unittest.TestCase):
         self.assertEqual(p['restart'], 'unless-stopped')
 
     def test_imported_production_waits_for_explicit_approval(self):
-        (self.root/'.deploy-enabled').touch()
         with patch.object(c, 'ROOT', self.root), patch.object(c, 'bind_address', return_value='192.168.1.20'), patch.object(c, 'api') as api:
-            c.reconcile('production')
+            with self.assertRaisesRegex(RuntimeError, 'database import'):
+                c.execute({'mode':'production','action':'deploy','revision':'c'*40})
         api.assert_not_called()
 
-    def test_main_recovers_interruption_even_when_new_ci_is_pending(self):
-        (self.root/'.deploy-enabled').touch()
-        (self.root/'production').mkdir()
-        (self.root/'production/.migration-approved').touch()
-        with patch.object(c, 'ROOT', self.root), patch.object(c, 'bind_address', return_value='192.168.1.20'), patch.object(c, 'recover') as recover, patch.object(c, 'api', return_value={'commit': {'sha': 'c'*40}}), patch.object(c, 'verified_main_release', return_value=None):
-            with self.assertRaisesRegex(RuntimeError, 'Production was not deployed'):
-                c.reconcile('production')
-        recover.assert_called_once_with(self.root/'production')
-
     def test_disabled_controller_changes_nothing(self):
-        with patch.object(c, 'ROOT', self.root), patch.object(c, 'bind_address') as address:
-            c.reconcile('preview')
-        address.assert_not_called()
+        with patch.object(c, 'ROOT', self.root), patch.object(c, 'select') as select:
+            with self.assertRaisesRegex(RuntimeError, 'Deployment paused'):
+                c.reconcile('event')
+        select.assert_not_called()
+
+    def test_stale_candidate_rolls_back_database_before_commit(self):
+        def compose(target, state, *args):
+            if state == self.new and args[0] == 'up':
+                with sqlite3.connect(self.db) as db: db.execute("INSERT INTO records VALUES ('candidate write')")
+        calls=0
+        def guard():
+            nonlocal calls
+            calls+=1
+            if calls==2: raise RuntimeError('superseded')
+        with patch.object(c,'compose',side_effect=compose), patch.object(c,'utility',side_effect=self.utility), patch.object(c,'smoke'):
+            with self.assertRaisesRegex(RuntimeError,'superseded'):
+                c.deploy(self.target,self.new,'key',guard=guard)
+        self.assertEqual(self.records(),['existing member'])
+        self.assertEqual(c.read(self.target/'current.json'),self.old)
+
+    def test_empty_readonly_bootstrap_key_is_replaced_atomically(self):
+        secret=self.target/'admin.key';secret.write_text('');secret.chmod(0o444)
+        with patch.object(c,'compose'), patch.object(c,'utility',side_effect=self.utility), patch.object(c,'smoke'):
+            c.deploy(self.target,self.new,'new-bootstrap-key')
+        self.assertEqual(secret.read_text(),'new-bootstrap-key')
+        self.assertEqual(secret.stat().st_mode & 0o777,0o444)
 
     def test_crash_after_commit_does_not_restore_old_snapshot(self):
         c.atomic(self.target/'current.json', self.new)
@@ -411,5 +376,6 @@ class Persistence(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
 
 

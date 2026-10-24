@@ -5,12 +5,12 @@ permissions:
   contents: read
 jobs:
   verify:
-    name: Verify application and dependencies
+    name: Essentials
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Prepare / Check out the tested revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -24,3 +24,4 @@ jobs:
         run: python3 -m unittest discover -s .github/deploy/tests -v
       - name: Verify / Real non-root preview gateway startup and reload
         run: python3 .github/deploy/gateway-smoke.py
+
