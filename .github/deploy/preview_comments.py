@@ -2,7 +2,7 @@
 COMMENT_MARKER = '<!-- orbat-preview -->'
 
 
-def update_comment(api, number, state=None, deleted=False):
+def update_comment(api, number, state=None, deleted=False, no_preview=False):
     if type(number) is not int or number < 1:
         raise ValueError('Invalid PR number')
     if state:
@@ -13,12 +13,15 @@ def update_comment(api, number, state=None, deleted=False):
                 + f'Deployed revision: `{state["revision"]}`\n\n'
                 + 'This PR keeps its own database across updates. Production data is separate.'
                 + ('\n\n**Ingress check:** ' + state['ingress'] if state.get('ingress') else ''))
+    elif no_preview:
+        body = (COMMENT_MARKER + '\n### No preview required\n\n'
+                + 'These changes do not affect the application runtime.')
     elif deleted:
         body = (COMMENT_MARKER + '\n### Preview removed\n\n'
                 + 'This PR is closed or merged. Its container, route, database and backups were removed. '
                 + 'Its package versions, PR caches and unused host images were cleaned up.')
     else:
-        body = (COMMENT_MARKER + '\n### Preview stopped\n\n'
+        body = (COMMENT_MARKER + '\n### Preview paused\n\n'
                 + 'The container and route are stopped. This PR database is retained for reopening.')
     for page in range(1, 101):
         comments = api(f'issues/{number}/comments?per_page=100&page={page}')
