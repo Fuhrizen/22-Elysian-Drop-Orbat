@@ -61,10 +61,10 @@ const readinessGrades = [
 export function combatReadiness(filled: number, total: number) { const ratio = total > 0 ? Math.max(0, Math.min(1, filled / total)) : 0; const grade = ratio === 0 ? 0 : ratio === 1 ? 7 : Math.min(6, 1 + Math.floor(ratio * 6)); return { ...readinessGrades[grade], grade, ratio }; }
 export function formationReadiness(filled: number, total: number) { return filled === 0 ? 'AWAITING ORDERS' : filled >= total ? 'IN POSITION' : filled / total < .5 ? 'FORMING' : 'ASSEMBLING'; }
 
-export const editableRoles = [ 'Vox Operator', 'Medicae', 'AT Specialist', 'Plasma Gunner', 'Melta Gunner', 'Guardsmen'];
+export const editableRoles = [ 'Vox Operator', 'Medicae', 'AT Specialist', 'Plasma Gunner', 'Melta Gunner', 'Stubber', 'Guardsmen'];
 export function editableSlot(id: string) { const slot = slots.find(s=>s.id===id); return !!slot && slot.section.startsWith('spear') && !['ic','ic2'].includes(id); }
 export function applySlotRoles(roles: Record<string,string>) {
-    const types: Record<string,string> = { 'Section Leader':'leader','Vox Operator':'vox','Medicae':'medic','AT Specialist':'at','Plasma Gunner':'plasma','Melta Gunner':'melta','Guardsmen':'trooper' };
+    const types: Record<string,string> = { 'Section Leader':'leader','Vox Operator':'vox','Medicae':'medic','AT Specialist':'at','Plasma Gunner':'plasma','Melta Gunner':'melta','Stubber':'stubber','Guardsmen':'trooper' };
     return slots.map(s=> editableSlot(s.id) && (editableRoles.includes(roles[s.id]) || roles[s.id] === 'Section Leader') ? {...s,name:roles[s.id],type:types[roles[s.id]],protected:roles[s.id]==='Section Leader'} : s);
 }
 export function slotPhraseRole(slot: {id:string;type?:string;phraseRole?:string}) { return slot.phraseRole || (slot.type==='leader' ? 'ic' : phraseRole(slot.id)); }
@@ -75,7 +75,7 @@ export type OrbatSection = { id: string; name: string; eyebrow: string };
 export type OrbatLayout = { sections: OrbatSection[]; slots: OrbatSlot[] };
 export type RolePolicy = { enabled: boolean; editScope: 'none' | 'section' | 'all'; canEditRoles: boolean; canEditAssignments: boolean };
 export type OrbatTemplate = { id: string; name: string; layout: OrbatLayout; updated: string };
-export const slotTypes = ['command','leader','vox','medic','at','plasma','melta','trooper','pilot'];
+export const slotTypes = ['command','leader','vox','medic','at','plasma','melta','stubber','trooper','pilot'];
 export function defaultLayout(): OrbatLayout { return {
     sections: [{id:'command',name:'Regimental command',eyebrow:'REGIMENTAL HQ'},{id:'spear1',name:'SPEAR 1',eyebrow:'DROP INFANTRY'},{id:'spear2',name:'SPEAR 2',eyebrow:'DROP INFANTRY'},{id:'shield',name:'SHIELD',eyebrow:'ATTACHED FLIGHT ASSET'}],
     slots: slots.map(s=>({...s,phraseRole:slotPhraseRole(s)}))
