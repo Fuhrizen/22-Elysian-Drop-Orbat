@@ -100,4 +100,5 @@ export function validRolePolicy(value: unknown): value is RolePolicy {
     return !!p && typeof p.enabled==='boolean' && typeof p.canEditRoles==='boolean' && typeof p.canEditAssignments==='boolean' && ['none','section','all'].includes(p.editScope);
 }
 
-export const slotRoleOptions = (s:{id:string;section?:string}) => s.id==='gm2' ? ['Gamemaster','Vox Operator'] : ['gm','ic','ic2'].includes(s.id) ? [] : s.section==='shield' ? ['Pilot','Vox Operator'] : [...editableRoles];
+export const slotRoleOptions = (s:{id:string;section?:string;phraseRole?:string}) => (s.id==='gm2' || (s.id!=='gm' && s.section==='command' && s.phraseRole==='gm')) ? ['Gamemaster','Vox Operator'] : ['gm','ic','ic2'].includes(s.id) ? [] : s.section==='shield' ? ['Pilot','Vox Operator'] : [...editableRoles];
+
