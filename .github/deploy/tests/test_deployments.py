@@ -36,8 +36,8 @@ class Deployments(unittest.TestCase):
         self.assertEqual(data['environment'],'development')
         self.assertFalse(data['auto_merge'])
         self.assertTrue(data['transient_environment'])
-        self.assertEqual([c.args[2]['state'] for c in api.call_args_list[1:]],['in_progress','success'])
-        self.assertFalse(api.call_args.args[2]['auto_inactive'])
+        self.assertEqual([c.args[2]['state'] for c in api.call_args_list[1:] if c.args[0].startswith('deployments/')],['in_progress','success'])
+        self.assertFalse([c.args[2] for c in api.call_args_list if c.args[0].startswith('deployments/')][-1]['auto_inactive'])
 
     def test_application_failure_marks_deployment_failed(self):
         api=Mock(return_value={'id':123})
@@ -45,3 +45,4 @@ class Deployments(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'smoke failed'):
             record_deployment({'mode':'preview','revision':'a'*40,'number':17,'run':{'id':42}},'https://pr-17.example',api,fail)
         self.assertEqual(api.call_args.args[2]['state'],'failure')
+
