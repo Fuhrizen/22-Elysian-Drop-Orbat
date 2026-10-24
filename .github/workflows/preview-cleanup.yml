@@ -1,5 +1,5 @@
-name: Preview cleanup
-run-name: "Cleanup / PR #${{ github.event.pull_request.number }}"
+name: Preview events
+run-name: "PR #${{ github.event.pull_request.number }}"
 on:
   pull_request:
     branches: [main]
@@ -16,3 +16,4 @@ jobs:
     steps:
       - name: Queue cleanup
         run: echo 'Deploy will recheck live PR state before stopping or removing its preview.'
+

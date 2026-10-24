@@ -1,0 +1,79 @@
+name: Prune
+run-name: Prune - ${{ github.event.workflow_run.head_branch || github.ref_name }}
+on:
+  workflow_run:
+    workflows: [Preview events]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Completed Build or Preview cleanup run to recheck and replay
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  target:
+    name: Target
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      enabled: ${{ steps.target.outputs.enabled }}
+      mode: ${{ steps.target.outputs.mode }}
+      target: ${{ steps.target.outputs.target }}
+      environment: ${{ steps.target.outputs.environment }}
+      name: ${{ steps.target.outputs.name }}
+      url: ${{ steps.target.outputs.url }}
+    steps:
+      - name: Check out trusted deployment controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/deploy
+      - name: Resolve completed run against live main and PR state
+        id: target
+        env:
+          DEPLOY_PURPOSE: cleanup
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+        run: python3 .github/deploy/event_selection.py
+  deploy:
+    name: ${{ needs.target.outputs.name }}
+    needs: target
+    if: needs.target.outputs.enabled == 'true'
+    runs-on: [self-hosted, linux, x64, deploy]
+    timeout-minutes: 20
+    # Cancel builds freely; serialize database replacement rather than interrupt it.
+    concurrency:
+      group: deploy-${{ needs.target.outputs.target }}
+      cancel-in-progress: false
+    environment:
+      name: ${{ needs.target.outputs.environment }}
+    permissions:
+      contents: read
+      actions: write
+      pull-requests: write
+      packages: write
+    steps:
+      - name: Check out trusted controller and smoke utilities
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/deploy
+            scripts
+      - name: ${{ needs.target.outputs.name }}
+        env:
+          DEPLOY_PURPOSE: cleanup
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+          ORBAT_ADMIN_ACCESS_KEY: ${{ secrets.ADMIN_ACCESS_KEY }}
+        run: python3 .github/deploy/reconcile.py event
+
