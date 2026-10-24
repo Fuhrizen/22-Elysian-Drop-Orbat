@@ -92,6 +92,16 @@ class Ingress(unittest.TestCase):
     def test_success_verifies_gateway_and_full_https(self):
         self.assertIn('HTTPS passed',self.execute())
 
+    def test_gateway_probe_waits_for_nginx_route_reload(self):
+        import io
+        import preview_ingress as ingress
+        from urllib.error import HTTPError
+        state={'origin':'https://pr-12.22preview.ivenity.co.uk','revision':'a'*40}
+        payload=json.dumps({'status':'ok','revision':state['revision']})
+        with patch.object(ingress,'build_opener') as opener, patch.object(ingress.time,'sleep'):
+            opener.return_value.open.side_effect=[HTTPError('http://gateway',404,'Not Found',{},None),io.StringIO(payload),io.StringIO(payload)]
+            self.assertIn('HTTPS passed',ingress.check_preview(state,'192.168.1.20'))
+
     def test_dns_failure_explains_cloudflare_record(self):
         import socket
         from urllib.error import URLError

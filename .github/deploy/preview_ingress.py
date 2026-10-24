@@ -2,6 +2,7 @@
 import json
 import socket
 import ssl
+import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, ProxyHandler, build_opener, HTTPSHandler
 
@@ -13,10 +14,16 @@ def check_preview(state, address):
             data = json.load(response)
             if data.get('status') != 'ok' or data.get('revision') != state['revision']:
                 raise ValueError('Unexpected application revision')
-    try:
-        verify(f'http://{address}:8081/api/health', {'Host': state['origin'].split('://', 1)[1]})
-    except (OSError, ValueError, HTTPError, URLError):
-        return 'Gateway route check failed. Check the gateway logs and preview container.'
+    # nginx reload is asynchronous: old workers may briefly answer with the old route.
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            verify(f'http://{address}:8081/api/health', {'Host': state['origin'].split('://', 1)[1]})
+            break
+        except (OSError, ValueError, HTTPError, URLError) as error:
+            if time.monotonic() >= deadline:
+                return f'Gateway route check failed: {error}. Check gateway logs and the published preview port.'
+            time.sleep(0.25)
     try:
         verify(state['origin'] + '/api/health')
     except HTTPError as error:
@@ -54,3 +61,4 @@ def check_gateway_ingress(domain):
         return 'HTTPS connection failed from the VM; check wildcard DNS, NPM and firewall access to port 8081.'
     except OSError:
         return 'HTTPS connection failed from the VM; check wildcard DNS, NPM and firewall access to port 8081.'
+
