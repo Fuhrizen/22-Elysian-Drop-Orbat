@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   lifecycle:
-    name: Preview / ${{ github.event.pull_request.draft && 'Pause draft' || 'Remove closed PR' }}
+    name: Preview lifecycle / Stop draft or remove closed PR
     if: github.event.pull_request.draft || github.event.pull_request.state == 'closed'
     runs-on: ubuntu-24.04
     steps:

@@ -5,7 +5,7 @@ permissions:
   contents: read
 jobs:
   image:
-    name: "${{ github.event_name == 'push' && 'Main' || format('PR #{0}', github.event.pull_request.number) }} / Compile, smoke and publish"
+    name: Compile, smoke and publish
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
