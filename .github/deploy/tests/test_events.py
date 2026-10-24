@@ -71,6 +71,12 @@ class Events(unittest.TestCase):
         self.assertIsNone(self.resolve(event, main='b'*40))
         self.assertIsNone(self.resolve({**event,'conclusion':'failure'}))
 
+    def test_separate_cleanup_rechecks_live_state(self):
+        event=run(path='.github/workflows/preview-cleanup.yml')
+        self.assertEqual(self.resolve(event,pull(draft=True))['action'],'stop')
+        self.assertEqual(self.resolve(event,pull(state='closed'))['action'],'remove')
+        self.assertIsNone(self.resolve(event,pull()))
+
     def test_bad_run_ids_rejected_before_api(self):
         for value in ['../1','0','abc','1\n2']:
             with self.assertRaises(ValueError): select(value, lambda _: self.fail('API called'))

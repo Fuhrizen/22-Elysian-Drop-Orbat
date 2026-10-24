@@ -3,20 +3,13 @@ run-name: "PR #${{ github.event.pull_request.number }}"
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, closed]
+    types: [opened, synchronize, reopened, ready_for_review]
 permissions:
   contents: read
 concurrency:
   group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
-  lifecycle:
-    name: Lifecycle
-    if: github.event.pull_request.draft || github.event.pull_request.state == 'closed'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Hand lifecycle event to Deploy
-        run: echo 'Deploy will recheck the current PR state and stop or remove its preview.'
   tests:
     name: Tests
     if: github.event.pull_request.state == 'open' && !github.event.pull_request.draft

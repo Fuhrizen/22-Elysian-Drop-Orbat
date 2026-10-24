@@ -37,7 +37,8 @@ def select(run_id, request=api):
             return None
         return {'mode': 'production', 'action': 'deploy', 'number': 0,
                 'revision': run['head_sha'], 'run': run}
-    if run['path'] != '.github/workflows/ci.yml' or run['event'] != 'pull_request':
+    cleanup_event = run['path'] == '.github/workflows/preview-cleanup.yml'
+    if run['path'] not in ('.github/workflows/ci.yml', '.github/workflows/preview-cleanup.yml') or run['event'] != 'pull_request':
         return None
     # workflow_run.pull_requests may be empty; commit association is authoritative too.
     pulls = run.get('pull_requests') or request(f'commits/{run["head_sha"]}/pulls?per_page=100')
@@ -51,6 +52,8 @@ def select(run_id, request=api):
             pr['user']['login'].lower() not in APPROVED_AUTHORS or pr['base']['ref'] != 'main'):
         return None
     action = 'remove' if pr['state'] == 'closed' else 'stop' if pr['draft'] else 'deploy'
+    if cleanup_event and action == 'deploy':
+        return None
     if action == 'deploy' and (run['conclusion'] != 'success' or run['head_sha'] != pr['head']['sha']):
         return None
     return {'mode': 'preview', 'action': action, 'number': pr['number'],
