@@ -268,8 +268,8 @@ def summary(text):
             stream.write(text + '\n\n')
 
 
-def preview_comment(number, state=None, deleted=False):
-    update_comment(api, number, state, deleted=deleted)
+def preview_comment(number, state=None, deleted=False, no_preview=False):
+    update_comment(api, number, state, deleted=deleted, no_preview=no_preview)
 
 
 def routes(address, excluded=None):
@@ -327,7 +327,10 @@ def execute(plan):
                 preview_comment(plan['number'], deleted=True)
                 summary(f"PR #{plan['number']}: preview, database, package versions, PR caches and unused host images removed.")
             else:
-                preview_comment(plan['number'])
+                if plan.get('no_preview'):
+                    preview_comment(plan['number'], no_preview=True)
+                else:
+                    preview_comment(plan['number'])
                 summary(f"PR #{plan['number']}: preview stopped; database retained.")
             return
         if not read(target / 'current.json'):

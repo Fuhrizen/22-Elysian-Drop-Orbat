@@ -63,11 +63,19 @@ class Comments(unittest.TestCase):
             c.preview_comment(12, self.state)
         self.assertEqual(api.call_args.args[1], 'POST')
 
+    def test_no_preview_required_has_no_stale_url(self):
+        with patch.object(c, 'api', return_value=[]) as api:
+            c.preview_comment(12, no_preview=True)
+        body = api.call_args.args[2]['body']
+        self.assertIn('No preview required', body)
+        self.assertNotIn('Open preview', body)
+        self.assertNotIn('Preview paused', body)
+
     def test_stopped_comment_removes_ready_link(self):
         with patch.object(c, 'api', return_value=[]) as api:
             c.preview_comment(12)
         body=api.call_args.args[2]['body']
-        self.assertIn('Preview stopped', body)
+        self.assertIn('Preview paused', body)
         self.assertNotIn('Open preview', body)
 
     def test_existing_comment_is_found_on_later_pages(self):
