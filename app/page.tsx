@@ -187,7 +187,7 @@ export default function Home() {
     useEffect(() => { if (!opId && data.operations.length)
         setOpId(data.operations.find(o => o.status === 'open')?.id || data.operations[0].id); }, [data.operations, opId]);
     useEffect(() => { setClock(Date.now()); const tick = setInterval(() => setClock(Date.now()), 1000); return () => clearInterval(tick); }, []);
-    const changeView = (v: string) => { setView(v); history.replaceState(null, '', '?view=' + v); requestAnimationFrame(() => document.querySelector('.terminal-tabs > [data-state=active]')?.scrollTo({ top: 0 })); };
+    const changeView = (v: string) => { setView(v); history.replaceState(null, '', '?view=' + v); requestAnimationFrame(() => { window.scrollTo({ top: 0 }); document.querySelector('.terminal-tabs > [data-state=active]')?.scrollTo({ top: 0 }); }); };
 
     const orbatReadOnly = !!data.configuration?.locked && !data.admin;
     const layout = data.layout || defaultLayout();
