@@ -34,7 +34,7 @@ test('second command slot swaps GM/vox and shares GM signup and withdrawal clear
   const beforeStubber=(await get()).assignments.find(a=>a.slot==='trooper1');
   await post({action:'slot_role',slot:'trooper1',role:'Stubber'});
   const stubberState=await get(),stubber=stubberState.layout.slots.find(s=>s.id==='trooper1');
-  assert.equal(stubber.name,'Stubber');assert.equal(stubber.type,'plasma');
+  assert.equal(stubber.name,'Stubber');assert.equal(stubber.type,'stubber');
   assert.deepEqual(stubberState.assignments.find(a=>a.slot==='trooper1'),beforeStubber);
   assert.ok(slotRoleOptions(stubber).includes('Stubber'));
   assert.ok(!slotRoleOptions({id:'shield',section:'shield'}).includes('Stubber'));

@@ -30,7 +30,7 @@ async function layoutState() {
     const row = await setting('orbat_layout');
     const state = row ? JSON.parse(row.value) : {revision:0,layout:defaultLayout()};
     const roles = await slotRoles();
-    state.layout.slots = state.layout.slots.map((s:any)=>roles[s.id] ? {...s,name:roles[s.id],type:({'Vox Operator':'vox','Medicae':'medic','AT Specialist':'at','Plasma Gunner':'plasma','Melta Gunner':'melta','Stubber':'plasma','Guardsmen':'trooper'} as Record<string,string>)[roles[s.id]] || s.type} : s);
+    state.layout.slots = state.layout.slots.map((s:any)=>roles[s.id] ? {...s,name:roles[s.id],type:({'Vox Operator':'vox','Medicae':'medic','AT Specialist':'at','Plasma Gunner':'plasma','Melta Gunner':'melta','Stubber':'stubber','Guardsmen':'trooper'} as Record<string,string>)[roles[s.id]] || s.type} : s.name==='Stubber' && s.type==='plasma' ? {...s,type:'stubber'} : s);
     return state as {revision:number;layout:OrbatLayout};
 }
 async function rolePolicies(layout: OrbatLayout) {
@@ -285,7 +285,7 @@ async function handlePost(req: Request) {
             if(!actor) return fail('A role passphrase with permission to edit this slot is required.',403);
             if ((await operationConfig()).mode !== 'main') return fail('Slot roles are only available on the main ORBAT.');
             const state=await layoutState();
-            const type=({'Vox Operator':'vox','Medicae':'medic','AT Specialist':'at','Plasma Gunner':'plasma','Melta Gunner':'melta','Stubber':'plasma','Guardsmen':'trooper','Section Leader':'leader','Gamemaster':'command','Pilot':'pilot'} as Record<string,string>)[role];
+            const type=({'Vox Operator':'vox','Medicae':'medic','AT Specialist':'at','Plasma Gunner':'plasma','Melta Gunner':'melta','Stubber':'stubber','Guardsmen':'trooper','Section Leader':'leader','Gamemaster':'command','Pilot':'pilot'} as Record<string,string>)[role];
             return await applyLayout({...state.layout,slots:state.layout.slots.map(s=>s.id===id?{...s,name:role,type:type || s.type}:s)},state.revision,{},undefined,admin);
         }
         if (action === 'claim') {
