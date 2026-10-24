@@ -83,7 +83,8 @@ def select(run_id, request=api, allow_ci=False):
     if action == 'deploy' and (run['conclusion'] != 'success' or run['head_sha'] != pr['head']['sha']):
         return None
     return {'mode': 'preview', 'action': action, 'number': pr['number'],
-            'revision': pr['head']['sha'], 'run': run}
+            'revision': pr['head']['sha'], 'run': run,
+            'no_preview': action == 'stop' and not pr['draft']}
 
 
 def outputs(plan):
