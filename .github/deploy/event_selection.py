@@ -39,6 +39,8 @@ def select(run_id, request=api, allow_ci=False):
         return {'mode': 'production', 'action': 'deploy', 'number': 0,
                 'revision': run['head_sha'], 'run': run}
     if run['path'] == '.github/workflows/build.yml' and run['event'] == 'workflow_run':
+        if run['conclusion'] != 'success':
+            return None
         from build_provenance import load_provenance
         metadata = load_provenance(run, request)
         source_id = metadata['ci_run']
