@@ -392,7 +392,8 @@ class Persistence(unittest.TestCase):
         (self.root/'production').mkdir()
         (self.root/'production/.migration-approved').touch()
         with patch.object(c, 'ROOT', self.root), patch.object(c, 'bind_address', return_value='192.168.1.20'), patch.object(c, 'recover') as recover, patch.object(c, 'api', return_value={'commit': {'sha': 'c'*40}}), patch.object(c, 'verified_main_release', return_value=None):
-            c.reconcile('production')
+            with self.assertRaisesRegex(RuntimeError, 'Production was not deployed'):
+                c.reconcile('production')
         recover.assert_called_once_with(self.root/'production')
 
     def test_disabled_controller_changes_nothing(self):
@@ -410,4 +411,5 @@ class Persistence(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
 

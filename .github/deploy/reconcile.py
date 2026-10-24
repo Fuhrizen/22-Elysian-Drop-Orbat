@@ -320,8 +320,7 @@ def reconcile(mode):
         revision = api('branches/main')['commit']['sha']
         release = verified_main_release(revision)
         if not release:
-            summary('Main keeps its existing release: no successful PR image verified for this merged tree.')
-            return
+            raise RuntimeError('Production was not deployed: no successful PR image matches the merged tree. Update the PR with latest main and pass CI before merging; the existing release is retained.')
         run, tested, number = release
         candidate = config(target, tested, release_image(target, run, tested), address, 3000, True)
         candidate['main_revision'] = revision
@@ -395,4 +394,5 @@ if __name__ == '__main__':
     with (ROOT / '.reconcile.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         reconcile(sys.argv[1])
+
 
