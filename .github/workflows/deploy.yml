@@ -1,13 +1,13 @@
 name: Deploy
-run-name: Deploy / ${{ github.event.workflow_run.display_title || format('retry run {0}', inputs.run_id) }}
+run-name: Deploy
 on:
   workflow_run:
-    workflows: [CI, Main, Preview cleanup]
+    workflows: [Build]
     types: [completed]
   workflow_dispatch:
     inputs:
       run_id:
-        description: Completed CI or Main run to recheck and replay
+        description: Completed Build or Preview cleanup run to recheck and replay
         required: true
         type: string
 permissions:
@@ -39,6 +39,7 @@ jobs:
       - name: Resolve completed run against live main and PR state
         id: target
         env:
+          DEPLOY_PURPOSE: deploy
           GH_TOKEN: ${{ github.token }}
           DEPLOY_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
         run: python3 .github/deploy/event_selection.py
@@ -71,7 +72,9 @@ jobs:
             scripts
       - name: ${{ needs.target.outputs.name }}
         env:
+          DEPLOY_PURPOSE: deploy
           GH_TOKEN: ${{ github.token }}
           DEPLOY_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
           ORBAT_ADMIN_ACCESS_KEY: ${{ secrets.ADMIN_ACCESS_KEY }}
         run: python3 .github/deploy/reconcile.py event
+

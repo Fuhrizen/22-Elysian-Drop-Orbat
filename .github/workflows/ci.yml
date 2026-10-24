@@ -14,10 +14,4 @@ jobs:
     name: Tests
     if: github.event.pull_request.state == 'open' && !github.event.pull_request.draft
     uses: ./.github/workflows/tests.yml
-  build:
-    name: Build
-    needs: tests
-    uses: ./.github/workflows/build.yml
-    permissions:
-      contents: read
-      packages: write
+

@@ -1,24 +1,59 @@
 name: Build
-'on':
-  workflow_call: null
+run-name: ${{ github.event_name == 'push' && 'Build / main' || format('Build / CI {0}', github.event.workflow_run.id) }}
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 permissions:
   contents: read
+concurrency:
+  group: build-${{ github.event_name == 'push' && 'main' || github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
 jobs:
+  source:
+    name: Source
+    if: github.event_name == 'push' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      enabled: ${{ steps.source.outputs.enabled }}
+      revision: ${{ steps.source.outputs.revision }}
+      target: ${{ steps.source.outputs.target }}
+    steps:
+      - name: Check out trusted selector
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/deploy
+      - name: Select current source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/deploy/build_selection.py
   image:
     name: Image
+    needs: source
+    if: needs.source.outputs.enabled == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
       packages: write
+      actions: write
     env:
       NEXT_TELEMETRY_DISABLED: '1'
-      REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+      REVISION: ${{ needs.source.outputs.revision }}
     steps:
       - name: Prepare / Check out the tested revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.REVISION }}
+          ref: ${{ needs.source.outputs.revision }}
           persist-credentials: false
       - name: Prepare / Node and locked dependencies
         uses: ./.github/actions/setup
@@ -29,16 +64,10 @@ jobs:
       - name: Verify / Disposable image, readiness and access controls
         run: bash scripts/ci-image.sh smoke
       - name: Publish / Tested image for main or an internal PR
-        if: github.event_name != 'pull_request' || (github.actor != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name
-          == github.repository && !github.event.pull_request.draft)
         env:
           GHCR_TOKEN: ${{ github.token }}
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-            TARGET="pr-$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")"
-          else
-            TARGET=main
-          fi
+          TARGET="${{ needs.source.outputs.target }}"
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:${TARGET}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
@@ -63,3 +92,17 @@ jobs:
             printf '\nImage publication is complete; deployment is handled by the Deploy workflow.\n'
           } >> "$GITHUB_STEP_SUMMARY"
 
+
+      - name: Check out trusted cleanup code
+        if: always() && github.event_name == 'workflow_run'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: trusted-controller
+          persist-credentials: false
+          sparse-checkout: .github/deploy
+      - name: Clean up late images if PR closed during build
+        if: always() && github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 trusted-controller/.github/deploy/build_cleanup.py

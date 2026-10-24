@@ -23,7 +23,7 @@ def api(path, method='GET', data=None):
     return github(f'repos/{REPOSITORY}/{path}', method, data)
 
 
-def select(run_id, request=api):
+def select(run_id, request=api, allow_ci=False):
     if not re.fullmatch(r'[1-9][0-9]*', str(run_id)):
         raise ValueError('Invalid workflow run ID')
     run = request(f'actions/runs/{run_id}')
@@ -31,12 +31,25 @@ def select(run_id, request=api):
             (run.get('head_repository') or {}).get('full_name') != REPOSITORY):
         return None
     # The path/event pair prevents another workflow from impersonating a build.
-    if run['path'] == '.github/workflows/main.yml' and run['event'] == 'push':
+    if run['path'] == '.github/workflows/build.yml' and run['event'] == 'push':
         if (run['head_branch'] != 'main' or run['conclusion'] != 'success' or
                 run['head_sha'] != request('branches/main')['commit']['sha']):
             return None
         return {'mode': 'production', 'action': 'deploy', 'number': 0,
                 'revision': run['head_sha'], 'run': run}
+    if run['path'] == '.github/workflows/build.yml' and run['event'] == 'workflow_run':
+        source = re.search(r'CI ([1-9][0-9]*)$', run.get('display_title', ''))
+        if not source or run['conclusion'] != 'success':
+            return None
+        parent = request(f'actions/runs/{source[1]}')
+        if parent['path'] != '.github/workflows/ci.yml' or parent['event'] != 'pull_request':
+            return None
+        plan = select(source[1], request, allow_ci=True)
+        if not plan or plan['action'] != 'deploy' or plan['mode'] != 'preview':
+            return None
+        return {**plan, 'run': run}
+    if run['path'] == '.github/workflows/ci.yml' and not allow_ci:
+        return None
     cleanup_event = run['path'] == '.github/workflows/preview-cleanup.yml'
     if run['path'] not in ('.github/workflows/ci.yml', '.github/workflows/preview-cleanup.yml') or run['event'] != 'pull_request':
         return None
@@ -72,7 +85,12 @@ def outputs(plan):
 
 
 if __name__ == '__main__':
-    result = outputs(select(os.environ['DEPLOY_RUN_ID']))
+    plan = select(os.environ['DEPLOY_RUN_ID'])
+    purpose = os.environ.get('DEPLOY_PURPOSE')
+    if plan and ((purpose == 'deploy' and plan['action'] != 'deploy') or (purpose == 'cleanup' and plan['action'] == 'deploy')):
+        plan = None
+    result = outputs(plan)
     with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
         stream.write(''.join(f'{key}={value}\n' for key, value in result.items()))
     print(result.get('name', 'Superseded, failed or ineligible run; no deployment.'))
+

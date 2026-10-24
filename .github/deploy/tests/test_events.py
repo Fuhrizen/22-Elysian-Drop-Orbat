@@ -32,7 +32,7 @@ class Events(unittest.TestCase):
             if path == 'branches/main': return {'commit': {'sha': main}}
             if path == 'pulls/12': return pr or pull()
             raise AssertionError(path)
-        return select(42, request)
+        return select(42, request, allow_ci=True)
 
     def test_active_pr_build_deploys_by_number_not_branch_name(self):
         plan = self.resolve(pr=pull(head={'sha':'a'*40,'ref':'renamed','repo':{'full_name':REPOSITORY}}))
@@ -65,7 +65,7 @@ class Events(unittest.TestCase):
         self.assertIsNone(self.resolve(run(pull_requests=[{'number':12},{'number':13}])))
 
     def test_fresh_main_push_build_is_deployed_without_pr_tree_promotion(self):
-        event = run(event='push',path='.github/workflows/main.yml',head_branch='main')
+        event = run(event='push',path='.github/workflows/build.yml',head_branch='main')
         plan=self.resolve(event)
         self.assertEqual((plan['mode'], plan['revision']), ('production','a'*40))
         self.assertIsNone(self.resolve(event, main='b'*40))
@@ -134,3 +134,4 @@ class Cleanup(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
