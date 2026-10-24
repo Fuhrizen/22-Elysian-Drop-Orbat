@@ -30,6 +30,16 @@ test('second command slot swaps GM/vox and shares GM signup and withdrawal clear
   token=(await post({action:'login',key:'test-admin'})).sessionToken;
   const member=(await post({action:'register',name:'Second GM',rank:'Guardsman',status:'active'})).id;
   await post({action:'phrase',role:'gm',phrase:'gm-clearance'});
+  await post({action:'claim',slot:'trooper1',user:member});
+  const beforeStubber=(await get()).assignments.find(a=>a.slot==='trooper1');
+  await post({action:'slot_role',slot:'trooper1',role:'Stubber'});
+  const stubberState=await get(),stubber=stubberState.layout.slots.find(s=>s.id==='trooper1');
+  assert.equal(stubber.name,'Stubber');assert.equal(stubber.type,'plasma');
+  assert.deepEqual(stubberState.assignments.find(a=>a.slot==='trooper1'),beforeStubber);
+  assert.ok(slotRoleOptions(stubber).includes('Stubber'));
+  assert.ok(!slotRoleOptions({id:'shield',section:'shield'}).includes('Stubber'));
+  await post({action:'withdraw',slot:'trooper1',expected:member,created:beforeStubber.created});
+
   const original=(await get()).layout.slots.find(s=>s.id==='gm2');
   assert.equal(original.section,'command');assert.equal(original.phraseRole,'gm');
   assert.deepEqual(slotRoleOptions(original),['Gamemaster','Vox Operator']);assert.deepEqual(slotRoleOptions({id:'gm',section:'command'}),[]);
