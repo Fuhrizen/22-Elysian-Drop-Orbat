@@ -1,6 +1,19 @@
 name: Tests
 'on':
-  workflow_call: null
+  workflow_call:
+    inputs:
+      app:
+        type: boolean
+        default: true
+      pipeline:
+        type: boolean
+        default: true
+      dependencies:
+        type: boolean
+        default: true
+      gateway:
+        type: boolean
+        default: true
 permissions:
   contents: read
 jobs:
@@ -15,13 +28,39 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Prepare / Node and locked dependencies
+        if: inputs.app || inputs.dependencies
         uses: ./.github/actions/setup
       - name: Verify / API, permissions and SQLite regressions
+        if: inputs.app || inputs.dependencies
         run: pnpm test
       - name: Verify / Known high and critical dependency vulnerabilities
+        if: inputs.dependencies
         run: pnpm audit --audit-level=high
+      - name: Verify / Workflow YAML syntax
+        if: inputs.pipeline
+        run: ruby -e 'require "yaml"; Dir[".github/**/*.yml", ".github/**/*.yaml"].each { |path| YAML.parse_file(path) }'
       - name: Verify / Deployment selection, persistence and recovery
+        if: inputs.pipeline
         run: python3 -m unittest discover -s .github/deploy/tests -v
       - name: Verify / Real non-root preview gateway startup and reload
+        if: inputs.gateway
         run: python3 .github/deploy/gateway-smoke.py
+
+      - name: Report selected checks
+        env:
+          APP: ${{ inputs.app || inputs.dependencies }}
+          PIPELINE: ${{ inputs.pipeline }}
+          DEPENDENCIES: ${{ inputs.dependencies }}
+          GATEWAY: ${{ inputs.gateway }}
+        run: |
+          {
+            echo '### CI scope'
+            echo
+            echo "- Application regressions: $APP"
+            echo "- Dependency audit: $DEPENDENCIES"
+            echo "- Controller regressions: $PIPELINE"
+            echo "- Docker gateway integration: $GATEWAY"
+            echo
+            echo 'Unchanged categories are skipped. Documentation-only changes require no application tests.'
+          } >> "$GITHUB_STEP_SUMMARY"
 

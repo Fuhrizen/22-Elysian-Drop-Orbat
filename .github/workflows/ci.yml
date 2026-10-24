@@ -10,8 +10,40 @@ concurrency:
   group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
+  changes:
+    name: Changes
+    if: github.event.pull_request.state == 'open' && !github.event.pull_request.draft
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      app: ${{ steps.scope.outputs.app }}
+      pipeline: ${{ steps.scope.outputs.pipeline }}
+      dependencies: ${{ steps.scope.outputs.dependencies }}
+      gateway: ${{ steps.scope.outputs.gateway }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/deploy
+      - name: Classify complete PR diff
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_REVISION: ${{ github.event.pull_request.head.sha }}
+        run: python3 .github/deploy/change_scope.py
   tests:
     name: Tests
-    if: github.event.pull_request.state == 'open' && !github.event.pull_request.draft
+    needs: changes
+    if: always() && github.event.pull_request.state == 'open' && !github.event.pull_request.draft
     uses: ./.github/workflows/tests.yml
+
+    with:
+      app: ${{ needs.changes.result != 'success' || needs.changes.outputs.app == 'true' }}
+      pipeline: ${{ needs.changes.result != 'success' || needs.changes.outputs.pipeline == 'true' }}
+      dependencies: ${{ needs.changes.result != 'success' || needs.changes.outputs.dependencies == 'true' }}
+      gateway: ${{ needs.changes.result != 'success' || needs.changes.outputs.gateway == 'true' }}
 

@@ -54,6 +54,14 @@ def pages(request, path, key=None):
     raise RuntimeError('Incomplete cleanup inventory; nothing will be deleted')
 
 
+def owned_cache(cache, number):
+    if cache.get('ref') == f'refs/pull/{number}/merge':
+        return True
+    # workflow_run builds save caches on main, so key ownership must be explicit.
+    return (cache.get('ref') == 'refs/heads/main'
+            and re.match(fr'^next-v1-[A-Za-z0-9_]+-node24-pr-{number}-', cache.get('key', '')) is not None)
+
+
 def cleanup(number, root, repository, request, command, legacy_images=()):
     if type(number) is not int or number < 1:
         raise ValueError('Invalid PR number')
@@ -73,6 +81,8 @@ def cleanup(number, root, repository, request, command, legacy_images=()):
         versions = []
     cache_path = f'repos/{repository}/actions/caches?'+urlencode({'ref': f'refs/pull/{number}/merge'})
     caches = pages(request, cache_path, 'actions_caches')
+    main_cache_path = f'repos/{repository}/actions/caches?'+urlencode({'ref': 'refs/heads/main'})
+    caches.extend(pages(request, main_cache_path, 'actions_caches'))
     # All inventories must complete before any remote deletion.
     for version in versions:
         if owned_version(version, number, protected, legacy_images):
@@ -81,8 +91,8 @@ def cleanup(number, root, repository, request, command, legacy_images=()):
             except HTTPError as error:
                 if error.code != 404:
                     raise RuntimeError('Could not delete PR image version; check GHCR package Admin access') from error
-    for cache in caches:
-        if cache.get('ref') == f'refs/pull/{number}/merge':
+    for cache in {cache['id']: cache for cache in caches}.values():
+        if owned_cache(cache, number):
             try:
                 request(f'repos/{repository}/actions/caches/{int(cache["id"])}', 'DELETE')
             except HTTPError as error:
@@ -108,3 +118,4 @@ def cleanup(number, root, repository, request, command, legacy_images=()):
             continue  # Already removed by an earlier cleanup event.
         if image_id not in protected_ids:
             command(['docker', 'image', 'rm', image])
+

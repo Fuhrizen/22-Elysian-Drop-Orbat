@@ -328,7 +328,7 @@ def execute(plan):
                 summary(f"PR #{plan['number']}: preview, database, package versions, PR caches and unused host images removed.")
             else:
                 preview_comment(plan['number'])
-                summary(f"PR #{plan['number']}: draft preview stopped; database retained.")
+                summary(f"PR #{plan['number']}: preview stopped; database retained.")
             return
         if not read(target / 'current.json'):
             available = next(int(line.split()[1]) for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:'))
@@ -384,4 +384,5 @@ if __name__ == '__main__':
     with (ROOT / '.reconcile.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         reconcile(sys.argv[1])
+
 

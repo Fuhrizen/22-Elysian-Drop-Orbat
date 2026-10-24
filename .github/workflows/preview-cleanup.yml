@@ -3,11 +3,11 @@ run-name: "PR #${{ github.event.pull_request.number }}"
 on:
   pull_request:
     branches: [main]
-    types: [converted_to_draft, closed]
+    types: [converted_to_draft, closed, synchronize]
 permissions:
   contents: read
 concurrency:
-  group: pr-${{ github.event.pull_request.number }}
+  group: ${{ github.event.action == 'synchronize' && 'scope' || 'pr' }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
   cleanup:
@@ -16,4 +16,5 @@ jobs:
     steps:
       - name: Queue cleanup
         run: echo 'Deploy will recheck live PR state before stopping or removing its preview.'
+
 

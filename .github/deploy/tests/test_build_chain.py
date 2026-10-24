@@ -12,6 +12,7 @@ class BuildChain(unittest.TestCase):
         if path == 'actions/runs/42': return self.ci
         if path == 'actions/runs/84': return self.build
         if path == 'actions/runs/84/jobs?per_page=100': return {'jobs':[{'name':'Source','steps':[{'name':self.provenance}]}]}
+        if '/files?' in path: return [{'filename':'app/page.tsx'}]
         if path == 'pulls/12': return self.pr
         if path == 'branches/main': return {'commit': {'sha':'c'*40}}
         raise AssertionError(path)
@@ -50,3 +51,4 @@ class BuildChain(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+

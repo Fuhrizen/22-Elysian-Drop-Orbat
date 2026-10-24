@@ -12,7 +12,7 @@ from preview_cleanup import cleanup, owned_version
 
 
 def pull(**changes):
-    return {'number': 12, 'state': 'open', 'draft': False, 'user': {'login': 'Fuhrizen'},
+    return {'number': 12, 'changed_files':1, 'state': 'open', 'draft': False, 'user': {'login': 'Fuhrizen'},
             'base': {'ref': 'main'}, 'head': {'sha': 'a'*40, 'ref': 'feature',
             'repo': {'full_name': REPOSITORY}}, **changes}
 
@@ -30,6 +30,7 @@ class Events(unittest.TestCase):
             if path.startswith('actions/runs/'): return event or run()
             if path.startswith('commits/'): return [{'number': 12}]
             if path == 'branches/main': return {'commit': {'sha': main}}
+            if '/files?' in path: return [{'filename':'app/page.tsx'}]
             if path == 'pulls/12': return pr or pull()
             raise AssertionError(path)
         return select(42, request, allow_ci=True)
@@ -134,4 +135,5 @@ class Cleanup(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
 

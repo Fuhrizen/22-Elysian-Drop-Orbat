@@ -2,16 +2,28 @@
 import json
 import os
 from event_selection import select, api
+from change_scope import pr_scope, classify
 
 def resolve(event, request=api):
     if 'workflow_run' in event:
         plan = select(event['workflow_run']['id'], request, allow_ci=True)
         if not plan or plan['action'] != 'deploy' or plan['mode'] != 'preview':
             return {'enabled': 'false'}
+        if not pr_scope(plan['number'], plan['revision'], request)['preview']:
+            return {'enabled': 'false'}
         return {'enabled': 'true', 'revision': plan['revision'], 'target': f"pr-{plan['number']}", 'branch': request(f"pulls/{plan['number']}")['head']['ref']}
     revision = event['after']
     if event.get('ref') != 'refs/heads/main' or request('branches/main')['commit']['sha'] != revision:
         return {'enabled': 'false'}
+    before = event.get('before', '')
+    if before and before != '0'*40:
+        try:
+            comparison = request(f'compare/{before}...{revision}')
+            files = comparison.get('files', [])
+            if files and len(files) < 300 and not classify(path for file in files for path in (file['filename'], file.get('previous_filename',file['filename'])))['preview']:
+                return {'enabled': 'false'}
+        except Exception as error:
+            print(f'Change comparison unavailable; building conservatively: {error}')
     return {'enabled': 'true', 'revision': revision, 'target': 'main', 'branch': 'main'}
 
 if __name__ == '__main__':
@@ -19,4 +31,5 @@ if __name__ == '__main__':
         result = resolve(json.load(stream))
     with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
         stream.write(''.join(f'{key}={value}\n' for key,value in result.items()))
+
 
