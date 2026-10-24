@@ -58,6 +58,15 @@ jobs:
           persist-credentials: false
       - name: Prepare / Node and locked dependencies
         uses: ./.github/actions/setup
+      - name: Cache / Incremental Next.js compilation
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .next/cache
+          # workflow_run caches are stored on main: target names isolate PR caches.
+          key: next-v1-${{ runner.os }}-node24-${{ needs.source.outputs.target }}-${{ hashFiles('pnpm-lock.yaml', 'next.config.*', 'tsconfig.json', 'postcss.config.*') }}-${{ needs.source.outputs.revision }}
+          restore-keys: |
+            next-v1-${{ runner.os }}-node24-${{ needs.source.outputs.target }}-${{ hashFiles('pnpm-lock.yaml', 'next.config.*', 'tsconfig.json', 'postcss.config.*') }}-
+            next-v1-${{ runner.os }}-node24-main-${{ hashFiles('pnpm-lock.yaml', 'next.config.*', 'tsconfig.json', 'postcss.config.*') }}-
       - name: Build / Next.js production output and TypeScript validation
         run: pnpm build
       - name: Package / Reuse the standalone build
@@ -74,13 +83,6 @@ jobs:
           trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
           docker tag orbat-ci:tested "$IMAGE"
           docker push "$IMAGE"
-          # During rollout the current controller still consumes run-* tags.
-          # Keep an alias on PR images; cleanup treats the paired tags as one version.
-          if [[ "$TARGET" == pr-* ]]; then
-            LEGACY="ghcr.io/${GITHUB_REPOSITORY,,}:run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-            docker tag orbat-ci:tested "$LEGACY"
-            docker push "$LEGACY"
-          fi
           PACKAGE_NAME="${GITHUB_REPOSITORY#*/}"
           PACKAGE_URL="https://github.com/${GITHUB_REPOSITORY}/pkgs/container/${PACKAGE_NAME,,}"
           {
@@ -119,3 +121,4 @@ jobs:
           req=Request('https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/actions/workflows/deploy.yml/dispatches',data=json.dumps(body).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
           with urlopen(req): pass
           PYTHON
+

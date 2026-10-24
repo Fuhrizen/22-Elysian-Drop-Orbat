@@ -51,6 +51,9 @@ def select(run_id, request=api, allow_ci=False):
         plan = select(source[1], request, allow_ci=True)
         if not plan or plan['action'] != 'deploy' or plan['mode'] != 'preview':
             return None
+        from change_scope import pr_scope
+        if not pr_scope(plan['number'], plan['revision'], request)['preview']:
+            return None
         return {**plan, 'run': run}
     if run['path'] == '.github/workflows/ci.yml' and not allow_ci:
         return None
@@ -70,7 +73,10 @@ def select(run_id, request=api, allow_ci=False):
         return None
     action = 'remove' if pr['state'] == 'closed' else 'stop' if pr['draft'] else 'deploy'
     if cleanup_event and action == 'deploy':
-        return None
+        from change_scope import pr_scope
+        if pr_scope(pr['number'], pr['head']['sha'], request)['preview']:
+            return None
+        action = 'stop'
     if action == 'deploy' and (run['conclusion'] != 'success' or run['head_sha'] != pr['head']['sha']):
         return None
     return {'mode': 'preview', 'action': action, 'number': pr['number'],
@@ -102,4 +108,5 @@ if __name__ == '__main__':
     with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
         stream.write(''.join(f'{key}={value}\n' for key, value in result.items()))
     print(result.get('name', 'Superseded, failed or ineligible run; no deployment.'))
+
 
