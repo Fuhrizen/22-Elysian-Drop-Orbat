@@ -10,6 +10,14 @@ const url = source => 'data:text/javascript;base64,' + Buffer.from(source).toStr
 const regimentUrl = url(compile(readFileSync('lib/regiment.ts', 'utf8')));
 const { defaultLayout, slotRoleOptions, canLockSlot } = await import(regimentUrl);
 
+test('saved command slots sharing GM clearance offer GM and vox regardless of their ID or current name', () => {
+ for (const name of ['Gamemaster', 'Vox Operator']) {
+  assert.deepEqual(slotRoleOptions({id:'command-custom-2',section:'command',phraseRole:'gm',name}), ['Gamemaster','Vox Operator']);
+ }
+ assert.deepEqual(slotRoleOptions({id:'gm',section:'command',phraseRole:'gm'}), []);
+ assert.ok(!slotRoleOptions({id:'trooper1',section:'spear1',phraseRole:'gm'}).includes('Gamemaster'));
+});
+
 test('second command slot swaps GM/vox and shares GM signup and withdrawal clearance', async () => {
  const directory=mkdtempSync(join(tmpdir(),'second-gm-'));const db=openDatabase(join(directory,'db.sqlite'),resolve('drizzle'));globalThis.__secondGmDb=db;
  try {
@@ -38,6 +46,16 @@ test('second command slot swaps GM/vox and shares GM signup and withdrawal clear
   }
   await post({action:'slot_role',slot:'gm',role:'Vox Operator'},true,400);
   await post({action:'slot_role',slot:'gm2',role:'Medicae'},true,400);
+  // The formation editor can persist an equivalent command slot with a custom ID.
+  const custom=defaultLayout();custom.slots=custom.slots.map(s=>s.id==='gm2'?{...s,id:'command-custom-2'}:s);
+  db.sqlite.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES ('orbat_layout',?)").run(JSON.stringify({revision:1,layout:custom}));
+  for(const role of ['Vox Operator','Gamemaster']) {
+   await post({action:'slot_role',slot:'command-custom-2',role});
+   const changed=(await get()).layout.slots.find(s=>s.id==='command-custom-2');
+   assert.equal(changed.name,role);assert.equal(changed.phraseRole,'gm');
+  }
+  await post({action:'slot_role',slot:'command-custom-2',role:'Medicae'},true,400);
+
  } finally {db.close();delete globalThis.__secondGmDb;rmSync(directory,{recursive:true,force:true});}
 });
 
@@ -60,3 +78,4 @@ test('saved layout gains gm2 once without changing existing assignments or seale
   assert.equal(state.revision,8);assert.equal(state.layout.slots.filter(s=>s.id==='gm2').length,1);
  } finally {db.close();rmSync(directory,{recursive:true,force:true});}
 });
+
