@@ -63,6 +63,7 @@ jobs:
       pull-requests: write
       packages: write
       deployments: write
+      statuses: write
     steps:
       - name: Check out trusted controller and smoke utilities
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -79,6 +80,7 @@ jobs:
           DEPLOY_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
           ORBAT_ADMIN_ACCESS_KEY: ${{ secrets.ADMIN_ACCESS_KEY }}
         run: python3 .github/deploy/reconcile.py event
+
 
 
 

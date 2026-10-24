@@ -46,6 +46,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      statuses: write
       actions: write
     env:
       NEXT_TELEMETRY_DISABLED: '1'
@@ -138,4 +139,13 @@ jobs:
           with urlopen(req): pass
           PYTHON
 
+
+
+      - name: Report preview build failure
+        if: always() && github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          READINESS_STAGE: build
+          BUILD_RESULT: ${{ job.status }}
+        run: python3 trusted-controller/.github/deploy/preview_readiness.py
 

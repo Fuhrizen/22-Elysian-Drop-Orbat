@@ -47,3 +47,29 @@ jobs:
       dependencies: ${{ needs.changes.result != 'success' || needs.changes.outputs.dependencies == 'true' }}
       gateway: ${{ needs.changes.result != 'success' || needs.changes.outputs.gateway == 'true' }}
 
+
+  readiness:
+    name: Preview gate
+    needs: [changes, tests]
+    if: always() && github.event.pull_request.state == 'open' && !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/deploy
+      - name: Set conditional preview requirement
+        env:
+          GH_TOKEN: ${{ github.token }}
+          READINESS_STAGE: ci
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_REVISION: ${{ github.event.pull_request.head.sha }}
+          TEST_RESULT: ${{ needs.tests.result }}
+          CHANGE_RESULT: ${{ needs.changes.result }}
+        run: python3 .github/deploy/preview_readiness.py
+

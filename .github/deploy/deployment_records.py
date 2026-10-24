@@ -1,5 +1,6 @@
 """Associate deployment status with the actual application commit, not the controller."""
 import os
+from preview_readiness import publish
 
 
 def record_deployment(plan, origin, api, work):
@@ -17,10 +18,17 @@ def record_deployment(plan, origin, api, work):
         api(path, 'POST', {'state': state, 'environment_url': origin,
                          'log_url': log_url, 'auto_inactive': not preview})
     status('in_progress')
+    if preview:
+        publish(plan['revision'], 'pending', 'Development deployment in progress', api)
     try:
         result = work()
     except BaseException:
         status('failure')
+        if preview:
+            publish(plan['revision'], 'failure', 'Development deployment failed', api)
         raise
     status('success')
+    if preview:
+        publish(plan['revision'], 'success', 'Development deployment and smoke tests passed', api)
     return result
+
