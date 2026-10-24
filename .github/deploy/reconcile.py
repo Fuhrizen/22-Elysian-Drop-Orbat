@@ -22,6 +22,7 @@ from preview_comments import COMMENT_MARKER, update_comment
 from preview_ingress import check_preview
 from event_selection import select, github
 from preview_cleanup import cleanup
+from deployment_records import record_deployment
 
 ROOT = Path('/srv/orbat')
 REPOSITORY = os.environ.get('GITHUB_REPOSITORY', 'Fuhrizen/22-Elysian-Drop-Orbat')
@@ -343,17 +344,21 @@ def execute(plan):
     candidate = config(target, plan['revision'], image,
                        address if plan['mode'] == 'production' else '127.0.0.1',
                        port, plan['mode'] == 'production')
-    deploy(target, candidate, key, guard=lambda: ensure_current(plan))
-    if plan['mode'] == 'preview':
-        (target / '.stopped').unlink(missing_ok=True)
-        routes(address)
-        state = {**candidate, 'ingress': check_preview(candidate, address)}
-        preview_comment(plan['number'], state)
-        summary(f"PR #{plan['number']}: {candidate['origin']} / `{plan['revision']}` / {state['ingress']}")
-        if not state['ingress'].startswith('Gateway route and HTTPS passed'):
-            raise RuntimeError('Preview container passed smoke tests but ingress failed; see the PR comment for details')
-    else:
-        summary(f"Main: {ORIGIN} / `{plan['revision']}`; persistent database retained.")
+    def finish():
+        deploy(target, candidate, key, guard=lambda: ensure_current(plan))
+        if plan['mode'] == 'preview':
+            (target / '.stopped').unlink(missing_ok=True)
+            routes(address)
+            state = {**candidate, 'ingress': check_preview(candidate, address)}
+            if 'certificate verification warning' in state['ingress']:
+                print('::warning::' + state['ingress'])
+            preview_comment(plan['number'], state)
+            summary(f"PR #{plan['number']}: {candidate['origin']} / `{plan['revision']}` / {state['ingress']}")
+            if not state['ingress'].startswith('Gateway route and HTTPS passed'):
+                raise RuntimeError('Preview container passed smoke tests but ingress failed; see the PR comment for details')
+        else:
+            summary(f"Main: {ORIGIN} / `{plan['revision']}`; persistent database retained.")
+    record_deployment(plan, candidate['origin'], api, finish)
 
 
 def reconcile(mode):
@@ -379,3 +384,4 @@ if __name__ == '__main__':
     with (ROOT / '.reconcile.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         reconcile(sys.argv[1])
+
