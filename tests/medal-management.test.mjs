@@ -39,7 +39,13 @@ test('medal types can be edited and removed without losing awarded honours',asyn
   assert.equal((await post({action:'award_medal',medal,user:member,operation:null})).status,400);
   assert.equal((await post({action:'update_medal',id:medal,name:'Revived',description:'Cannot revive.'})).status,404);
   assert.equal((await post({action:'delete_medal',id:medal})).status,404);
+  assert.equal((await get('')).users.find(p=>p.id===member).medal_count,1);
+  assert.equal((await post({action:'revoke_medal',id:award})).status,200);
+  assert.equal((await get('?medals=1&user='+member)).awards.length,0);
+  assert.equal((await get('')).users.find(p=>p.id===member).medal_count,0);
+  assert.ok((await get('?medals=1&user='+member,true)).awards.find(a=>a.id===award).revoked_at);
   const log=await get('?change_log=1&q=medal',true);
   assert.ok(log.records.some(r=>r.action==='delete_medal'));
  }finally{adapter.close();delete globalThis[key];rmSync(temporary,{recursive:true,force:true})}
 });
+
