@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Reconcile trusted main builds and approved PR images without checking out PR code."""
 import fcntl
+import signal
+import tempfile
 import ipaddress
 import json
 import os
@@ -17,7 +19,9 @@ from urllib.request import Request, urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from preview_gateway import reconcile_gateway
 from preview_comments import COMMENT_MARKER, update_comment
-from preview_ingress import check_preview, check_gateway_ingress
+from preview_ingress import check_preview
+from event_selection import select, github
+from preview_cleanup import cleanup
 
 ROOT = Path('/srv/orbat')
 REPOSITORY = os.environ.get('GITHUB_REPOSITORY', 'Fuhrizen/22-Elysian-Drop-Orbat')
@@ -44,55 +48,6 @@ def api(path, method="GET", data=None):
         return json.load(response)
 
 
-def inventory():
-    result = []
-    for page in range(1, 101):
-        batch = api(f'pulls?state=open&base=main&per_page=100&page={page}')
-        result.extend(batch)
-        if len(batch) < 100:
-            return result
-    raise RuntimeError('PR inventory incomplete; refusing cleanup')
-
-
-def eligible(pr):
-    return (pr['state'] == 'open' and not pr['draft'] and pr['base']['ref'] == 'main'
-            and (pr['head'].get('repo') or {}).get('full_name') == REPOSITORY
-            and pr['user']['login'].lower() in APPROVED_AUTHORS)
-
-
-def target_name(pr):
-    number = pr['number']
-    if type(number) is not int or number < 1:
-        raise ValueError('Invalid PR number')
-    return f'pr-{number}'
-
-
-def successful_run(revision, branch, event):
-    query = urlencode({'head_sha': revision, 'event': event, 'status': 'success', 'per_page': 100})
-    runs = api('actions/workflows/ci.yml/runs?' + query)['workflow_runs']
-    return next((r for r in runs if r['head_sha'] == revision and r['head_branch'] == branch
-                 and r['event'] == event and r['conclusion'] == 'success'
-                 and (r.get('head_repository') or {}).get('full_name') == REPOSITORY), None)
-
-
-def verified_main_release(revision):
-    """Reuse PR CI only when the tested source tree exactly equals merged main."""
-    pulls = api(f'commits/{revision}/pulls?per_page=100')
-    for pr in pulls:
-        if (not pr.get('merged_at') or pr.get('merge_commit_sha') != revision
-                or pr['base']['ref'] != 'main'
-                or (pr['head'].get('repo') or {}).get('full_name') != REPOSITORY):
-            continue
-        tested = pr['head']['sha']
-        if api(f'git/commits/{revision}')['tree']['sha'] != api(f'git/commits/{tested}')['tree']['sha']:
-            summary('Main keeps its current release: merged tree differs from tested PR; update and validate the PR before merging.')
-            continue
-        run = successful_run(tested, pr['head']['ref'], 'pull_request')
-        if run:
-            return run, tested, pr['number']
-    return None
-
-
 def bind_address():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.connect(('192.0.2.1', 80))
@@ -103,7 +58,8 @@ def bind_address():
 
 
 def image_for(run, revision):
-    tag = f"ghcr.io/{REPOSITORY.lower()}:run-{int(run['id'])}-{int(run['run_attempt'])}"
+    prefix = 'main' if run['event'] == 'push' else f"pr-{int(run['pr_number'])}"
+    tag = f"ghcr.io/{REPOSITORY.lower()}:{prefix}-run-{int(run['id'])}-{int(run['run_attempt'])}"
     command(['docker', 'pull', tag])
     info = json.loads(command(['docker', 'image', 'inspect', tag]))[0]
     labels = info['Config'].get('Labels') or {}
@@ -212,11 +168,13 @@ def recover(target):
     (target / 'transaction.json').unlink()
 
 
-def deploy(target, candidate, key):
+def deploy(target, candidate, key, guard=None):
     target.mkdir(parents=True, exist_ok=True, mode=0o700)
     target.chmod(0o700)
     recover(target)
     previous = read(target / 'current.json')
+    if guard:
+        guard()
     if previous == candidate:
         compose(target, candidate, 'up', '-d', '--wait', '--wait-timeout', '90')
         verify_published_port(target, candidate)
@@ -226,8 +184,12 @@ def deploy(target, candidate, key):
         raise RuntimeError('Deployment needs at least 2 GiB of free disk')
     secret = target / 'admin.key'
     if not secret.exists() or (secret.stat().st_size == 0 and key):
-        secret.write_text(key)
-        secret.chmod(0o444)  # Parent is private; runtime UID 1000 needs read access.
+        # Replace an empty read-only bootstrap file atomically as the runner user.
+        with tempfile.NamedTemporaryFile(mode='w', dir=target, delete=False) as stream:
+            stream.write(key)
+            temporary_secret = Path(stream.name)
+        temporary_secret.chmod(0o444)
+        temporary_secret.replace(secret)  # Parent is private; runtime UID 1000 needs read access.
     (target / 'data').mkdir(exist_ok=True)
     (target / 'backups').mkdir(exist_ok=True)
     utility(target, '-e', "const f=require('node:fs'),p=require('node:path');function fix(n){const s=f.lstatSync(n);if(s.isSymbolicLink())throw Error('Symlink in data');if(s.isDirectory())for(const x of f.readdirSync(n))fix(p.join(n,x));f.chownSync(n,1000,1000);f.chmodSync(n,s.isDirectory()?448:384)}fix('/target/data')")
@@ -252,6 +214,10 @@ def deploy(target, candidate, key):
         compose(target, candidate, 'up', '-d', '--wait', '--wait-timeout', '90')
         verify_published_port(target, candidate)
         smoke(target, candidate, maintenance=True)
+        if guard:
+            guard()
+        if previous:
+            atomic(target / 'rollback.json', previous)
         atomic(target / 'current.json', candidate)
         release_guard(target)
         (target / 'transaction.json').unlink()
@@ -305,94 +271,111 @@ def preview_comment(number, state=None, deleted=False):
     update_comment(api, number, state, deleted=deleted)
 
 
-def reconcile(mode):
-    if not (ROOT / '.deploy-enabled').exists():
-        summary('Deployment paused: /srv/orbat/.deploy-enabled is absent.')
-        return
+def routes(address, excluded=None):
+    states = []
+    for target in sorted((ROOT / 'previews').glob('pr-*')):
+        if target == excluded or (target / '.stopped').exists():
+            continue
+        if state := read(target / 'current.json'):
+            states.append(state)
+    gateway(address, states)
+
+
+def ensure_current(plan):
+    if plan['mode'] == 'production':
+        valid = api('branches/main')['commit']['sha'] == plan['revision']
+    else:
+        pr = api(f"pulls/{plan['number']}")
+        valid = (pr['state'] == 'open' and not pr['draft'] and
+                 pr['head']['sha'] == plan['revision'])
+    if not valid:
+        raise RuntimeError('Superseded deployment; existing database/release retained. The newest event owns this target.')
+
+
+def execute(plan):
     address = bind_address()
     key = os.environ.get('ORBAT_ADMIN_ACCESS_KEY', '')
-    if mode == 'production':
+    if plan['mode'] == 'production':
         target = ROOT / 'production'
         if not (target / '.migration-approved').exists():
-            summary('Main paused until the database import is approved.')
+            raise RuntimeError('Production is paused until the database import is approved')
+    else:
+        target = ROOT / 'previews' / f"pr-{plan['number']}"
+        if plan['action'] != 'deploy':
+            legacy = []
+            if target.exists():
+                for file in ('current.json', 'rollback.json'):
+                    if old := read(target / file):
+                        legacy.append(old['compose']['services']['terminal']['image'])
+                if plan['action'] == 'remove':
+                    tombstone = ROOT / f".cleanup-pr-{plan['number']}.json"
+                    atomic(tombstone, sorted(set(legacy + (read(tombstone) or []))))
+                routes(address, excluded=target)
+                if plan['action'] == 'remove':
+                    remove_preview(target)
+                else:
+                    stop_preview(target)
+                    (target / '.stopped').touch()
+            if plan['action'] == 'remove':
+                # Retryable tombstone retains image identity if remote cleanup fails.
+                tombstone = ROOT / f".cleanup-pr-{plan['number']}.json"
+                legacy = sorted(set(legacy + (read(tombstone) or [])))
+                atomic(tombstone, legacy)
+                cleanup(plan['number'], ROOT, REPOSITORY, github, command, legacy)
+                tombstone.unlink(missing_ok=True)
+                preview_comment(plan['number'], deleted=True)
+                summary(f"PR #{plan['number']}: preview, database, package versions, PR caches and unused host images removed.")
+            else:
+                preview_comment(plan['number'])
+                summary(f"PR #{plan['number']}: draft preview stopped; database retained.")
             return
-        recover(target)
-        revision = api('branches/main')['commit']['sha']
-        release = verified_main_release(revision)
-        if not release:
-            raise RuntimeError('Production was not deployed: no successful PR image matches the merged tree. Update the PR with latest main and pass CI before merging; the existing release is retained.')
-        run, tested, number = release
-        candidate = config(target, tested, release_image(target, run, tested), address, 3000, True)
-        candidate['main_revision'] = revision
-        deploy(target, candidate, key)
-        summary(f'Main: {ORIGIN} - merged `{revision}`, tested image `{tested}` from PR #{number}; persistent database retained.')
+        if not read(target / 'current.json'):
+            available = next(int(line.split()[1]) for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:'))
+            if available < 768 * 1024:
+                raise RuntimeError('Preview needs VM memory headroom; production is unchanged. Retry this deployment after freeing memory.')
+    # Recovery always precedes a new image change; recheck live state after acquiring host lock.
+    target.mkdir(parents=True, exist_ok=True, mode=0o700)
+    recover(target)
+    ensure_current(plan)
+    run = {**plan['run'], 'pr_number': plan['number']}
+    port = 3000 if plan['mode'] == 'production' else allocate_port(target, list((ROOT / 'previews').glob('pr-*')))
+    image = release_image(target, run, plan['revision'])
+    candidate = config(target, plan['revision'], image,
+                       address if plan['mode'] == 'production' else '127.0.0.1',
+                       port, plan['mode'] == 'production')
+    deploy(target, candidate, key, guard=lambda: ensure_current(plan))
+    if plan['mode'] == 'preview':
+        (target / '.stopped').unlink(missing_ok=True)
+        routes(address)
+        state = {**candidate, 'ingress': check_preview(candidate, address)}
+        preview_comment(plan['number'], state)
+        summary(f"PR #{plan['number']}: {candidate['origin']} / `{plan['revision']}` / {state['ingress']}")
+        if not state['ingress'].startswith('Gateway route and HTTPS passed'):
+            raise RuntimeError('Preview container passed smoke tests but ingress failed; see the PR comment for details')
+    else:
+        summary(f"Main: {ORIGIN} / `{plan['revision']}`; persistent database retained.")
+
+
+def reconcile(mode):
+    if mode != 'event':
+        raise ValueError('Use event: deployments are selected from a completed GitHub workflow run')
+    if not (ROOT / '.deploy-enabled').exists():
+        raise RuntimeError('Deployment paused: /srv/orbat/.deploy-enabled is absent')
+    plan = select(os.environ['DEPLOY_RUN_ID'], api)
+    if not plan:
+        summary('Superseded, failed or ineligible event; no changes made.')
         return
-    if mode != 'preview':
-        raise ValueError('Expected production or preview')
-    open_prs = {target_name(pr): pr for pr in inventory()}
-    active = {name: pr for name, pr in open_prs.items() if eligible(pr)}
-    preview_root = ROOT / 'previews'
-    preview_root.mkdir(exist_ok=True)
-    targets = list(preview_root.glob('pr-*'))
-    # Remove routes first so closed/draft PRs never point at retained stopped containers.
-    states = [state for p in targets if p.name in active and (state := read(p / 'current.json'))]
-    gateway(address, states)
-    for target in targets:
-        if target.name not in active:
-            number = int(target.name.removeprefix('pr-'))
-            # Absence from the eligible list alone is not permission to delete data.
-            pr = open_prs.get(target.name) or api(f'pulls/{number}')
-            if pr['state'] == 'closed':
-                remove_preview(target)
-                summary(f'{target.name}: closed/merged; container, database and backups removed.')
-                preview_comment(number, deleted=True)
-            else:
-                stop_preview(target)
-                summary(f'{target.name}: stopped; database retained while PR remains open.')
-                preview_comment(number)
-    failures = []
-    for name, pr in active.items():
-        target = preview_root / name
-        revision = pr['head']['sha']
-        run = successful_run(revision, pr['head']['ref'], 'pull_request')
-        try:
-            if run:
-                if not read(target / 'current.json'):
-                    available = next(int(line.split()[1]) for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:'))
-                    if available < 768 * 1024:
-                        summary(f'{name}: waiting for VM memory headroom; production unchanged.')
-                        continue
-                port = allocate_port(target, list(preview_root.glob('pr-*')))
-                deploy(target, config(target, revision, release_image(target, run, revision), '127.0.0.1', port), key)
-            elif state := read(target / 'current.json'):
-                recover(target)
-                compose(target, state, 'up', '-d', '--wait', '--wait-timeout', '90')
-                smoke(target, state)
-            else:
-                summary(f'{name}: waiting for first successful CI build.')
-                continue
-            summary(f'PR #{pr["number"]} by @{pr["user"]["login"]}: https://{name}.{PREVIEW_DOMAIN}')
-        except Exception as error:
-            failures.append(name)
-            print(f'{name}: {error}', file=sys.stderr)
-    # Publish successfully committed state, including rollback state after a failed candidate.
-    states = [state for p in preview_root.glob('pr-*') if p.name in active and (state := read(p / 'current.json'))]
-    gateway(address, states)
-    summary('Preview ingress: ' + check_gateway_ingress(PREVIEW_DOMAIN))
-    for state in states:
-        number = int(state['origin'].split('://pr-', 1)[1].split('.', 1)[0])
-        if f'pr-{number}' not in failures:
-            state = {**state, 'ingress': check_preview(state, address)}
-            summary(f'PR #{number} ingress: {state["ingress"]}')
-            preview_comment(number, state)
-    if failures:
-        raise RuntimeError('Some previews failed: ' + ', '.join(failures))
+    execute(plan)
+
+
+def interrupted(signum, frame):
+    raise RuntimeError(f'Deployment interrupted by signal {signum}; transaction will be recovered')
 
 
 if __name__ == '__main__':
     ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
+    signal.signal(signal.SIGTERM, interrupted)
+    signal.signal(signal.SIGINT, interrupted)
     with (ROOT / '.reconcile.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         reconcile(sys.argv[1])
-
-

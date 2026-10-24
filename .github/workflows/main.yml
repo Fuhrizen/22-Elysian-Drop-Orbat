@@ -1,0 +1,17 @@
+name: Main
+run-name: Main / build ${{ github.sha }}
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: main-build
+  cancel-in-progress: true
+jobs:
+  build:
+    name: Main / Image
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write
