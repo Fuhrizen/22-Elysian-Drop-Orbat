@@ -109,6 +109,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 trusted-controller/.github/deploy/build_cleanup.py
+      - name: Record build provenance
+        env:
+          SOURCE_CI: ${{ github.event.workflow_run.id || 0 }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          Path('release.json').write_text(json.dumps({'build_run':int(os.environ['GITHUB_RUN_ID']),'attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),'ci_run':int(os.environ['SOURCE_CI']),'revision':os.environ['REVISION']}))
+          PYTHON
+      - name: Publish build provenance
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ github.run_attempt }}
+          path: release.json
+          retention-days: 7
+          if-no-files-found: error
       - name: Queue deployment
         env:
           GH_TOKEN: ${{ github.token }}
@@ -121,4 +137,5 @@ jobs:
           req=Request('https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/actions/workflows/deploy.yml/dispatches',data=json.dumps(body).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
           with urlopen(req): pass
           PYTHON
+
 

@@ -39,16 +39,17 @@ def select(run_id, request=api, allow_ci=False):
         return {'mode': 'production', 'action': 'deploy', 'number': 0,
                 'revision': run['head_sha'], 'run': run}
     if run['path'] == '.github/workflows/build.yml' and run['event'] == 'workflow_run':
-        jobs = request(f'actions/runs/{run_id}/jobs?per_page=100')['jobs']
-        sources = [re.fullmatch(r'CI run ([1-9][0-9]*)', step['name']) for job in jobs if job['name'] == 'Source' for step in job.get('steps', [])]
-        sources = [match for match in sources if match]
-        source = sources[0] if len(sources) == 1 else None
-        if not source or run['conclusion'] != 'success':
-            return None
-        parent = request(f'actions/runs/{source[1]}')
+        from build_provenance import load_provenance
+        metadata = load_provenance(run, request)
+        source_id = metadata['ci_run']
+        if type(source_id) is not int or source_id < 1:
+            raise RuntimeError('Invalid source CI run')
+        parent = request(f'actions/runs/{source_id}')
+        if parent['head_sha'] != metadata['revision']:
+            raise RuntimeError('Build provenance revision mismatch')
         if parent['path'] != '.github/workflows/ci.yml' or parent['event'] != 'pull_request':
             return None
-        plan = select(source[1], request, allow_ci=True)
+        plan = select(source_id, request, allow_ci=True)
         if not plan or plan['action'] != 'deploy' or plan['mode'] != 'preview':
             return None
         from change_scope import pr_scope
@@ -102,11 +103,14 @@ if __name__ == '__main__':
         time.sleep(2)
     plan = select(os.environ['DEPLOY_RUN_ID'])
     purpose = os.environ.get('DEPLOY_PURPOSE')
+    if not plan and purpose == 'deploy':
+        raise RuntimeError('No verified current deployment target; no container was updated. Check Build provenance and PR revision.')
     if plan and ((purpose == 'deploy' and plan['action'] != 'deploy') or (purpose == 'cleanup' and plan['action'] == 'deploy')):
         plan = None
     result = outputs(plan)
     with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
         stream.write(''.join(f'{key}={value}\n' for key, value in result.items()))
     print(result.get('name', 'Superseded, failed or ineligible run; no deployment.'))
+
 
 

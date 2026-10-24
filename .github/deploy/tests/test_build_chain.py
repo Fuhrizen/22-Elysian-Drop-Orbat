@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 import sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).parents[1]))
@@ -18,6 +19,8 @@ class BuildChain(unittest.TestCase):
         raise AssertionError(path)
 
     def setUp(self):
+        self.metadata=patch('build_provenance.load_provenance',return_value={'ci_run':42,'revision':'a'*40})
+        self.metadata.start();self.addCleanup(self.metadata.stop)
         self.provenance="CI run 42"
         self.ci=run()
         self.pr=pull()
@@ -37,8 +40,9 @@ class BuildChain(unittest.TestCase):
         self.assertIsNone(select(84,self.request))
         self.ci['conclusion']='success';self.pr['head']['sha']='b'*40
         self.assertIsNone(select(84,self.request))
-        self.pr=pull();self.provenance='Unrelated build'
-        self.assertIsNone(select(84,self.request))
+        self.pr=pull();self.metadata.stop();self.metadata=patch('build_provenance.load_provenance',return_value={'ci_run':42,'revision':'wrong'})
+        self.metadata.start();self.addCleanup(self.metadata.stop)
+        with self.assertRaisesRegex(RuntimeError,'revision mismatch'): select(84,self.request)
 
     def test_main_push_builds_latest_main_without_ci(self):
         self.assertEqual(resolve({'ref':'refs/heads/main','after':'c'*40},self.request)['target'],'main')
