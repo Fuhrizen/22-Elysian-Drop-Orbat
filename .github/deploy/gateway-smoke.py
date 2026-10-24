@@ -59,3 +59,4 @@ with tempfile.TemporaryDirectory() as directory:
         subprocess.run(['docker', 'logs', '--tail', '40', 'orbat-preview-gateway'], check=False)
         subprocess.run(['docker', 'rm', '-f', 'orbat-preview-gateway'], check=False)
         c.compose(target, state, 'down', '--remove-orphans')
+

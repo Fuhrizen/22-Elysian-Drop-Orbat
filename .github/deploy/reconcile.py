@@ -75,6 +75,24 @@ def successful_run(revision, branch, event):
                  and (r.get('head_repository') or {}).get('full_name') == REPOSITORY), None)
 
 
+def verified_main_release(revision):
+    """Reuse PR CI only when the tested source tree exactly equals merged main."""
+    pulls = api(f'commits/{revision}/pulls?per_page=100')
+    for pr in pulls:
+        if (not pr.get('merged_at') or pr.get('merge_commit_sha') != revision
+                or pr['base']['ref'] != 'main'
+                or (pr['head'].get('repo') or {}).get('full_name') != REPOSITORY):
+            continue
+        tested = pr['head']['sha']
+        if api(f'git/commits/{revision}')['tree']['sha'] != api(f'git/commits/{tested}')['tree']['sha']:
+            summary('Main keeps its current release: merged tree differs from tested PR; update and validate the PR before merging.')
+            continue
+        run = successful_run(tested, pr['head']['ref'], 'pull_request')
+        if run:
+            return run, tested, pr['number']
+    return None
+
+
 def bind_address():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.connect(('192.0.2.1', 80))
@@ -300,12 +318,15 @@ def reconcile(mode):
             return
         recover(target)
         revision = api('branches/main')['commit']['sha']
-        run = successful_run(revision, 'main', 'push') or successful_run(revision, 'main', 'workflow_dispatch')
-        if not run:
-            summary('Main keeps its existing release: no successful exact-main CI build.')
+        release = verified_main_release(revision)
+        if not release:
+            summary('Main keeps its existing release: no successful PR image verified for this merged tree.')
             return
-        deploy(target, config(target, revision, release_image(target, run, revision), address, 3000, True), key)
-        summary(f'Main: {ORIGIN} - `{revision}`; persistent database retained.')
+        run, tested, number = release
+        candidate = config(target, tested, release_image(target, run, tested), address, 3000, True)
+        candidate['main_revision'] = revision
+        deploy(target, candidate, key)
+        summary(f'Main: {ORIGIN} - merged `{revision}`, tested image `{tested}` from PR #{number}; persistent database retained.')
         return
     if mode != 'preview':
         raise ValueError('Expected production or preview')
@@ -374,3 +395,4 @@ if __name__ == '__main__':
     with (ROOT / '.reconcile.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         reconcile(sys.argv[1])
+

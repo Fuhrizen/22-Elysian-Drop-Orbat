@@ -1,5 +1,7 @@
 name: Deploy
 'on':
+  push:
+    branches: [main]
   workflow_run:
     workflows:
       - CI
@@ -19,7 +21,7 @@ jobs:
   production:
     name: Main / Preserve data and reconcile production
     if: |-
-      github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.head_repository.full_name == github.repository &&
