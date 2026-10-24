@@ -1,5 +1,5 @@
 name: CI
-run-name: "PR #${{ github.event.pull_request.number }}"
+run-name: CI Tests - ${{ github.head_ref }}
 on:
   pull_request:
     branches: [main]

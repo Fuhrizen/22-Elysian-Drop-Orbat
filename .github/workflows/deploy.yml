@@ -1,11 +1,12 @@
 name: Deploy
-run-name: Deploy
+run-name: Deploy - ${{ inputs.branch }}
 on:
-  workflow_run:
-    workflows: [Build]
-    types: [completed]
   workflow_dispatch:
     inputs:
+      branch:
+        description: Source branch (display only; revision is verified through GitHub)
+        required: true
+        type: string
       run_id:
         description: Completed Build or Preview cleanup run to recheck and replay
         required: true

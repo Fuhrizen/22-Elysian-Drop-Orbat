@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -38,7 +39,10 @@ def select(run_id, request=api, allow_ci=False):
         return {'mode': 'production', 'action': 'deploy', 'number': 0,
                 'revision': run['head_sha'], 'run': run}
     if run['path'] == '.github/workflows/build.yml' and run['event'] == 'workflow_run':
-        source = re.search(r'CI ([1-9][0-9]*)$', run.get('display_title', ''))
+        jobs = request(f'actions/runs/{run_id}/jobs?per_page=100')['jobs']
+        sources = [re.fullmatch(r'CI run ([1-9][0-9]*)', step['name']) for job in jobs if job['name'] == 'Source' for step in job.get('steps', [])]
+        sources = [match for match in sources if match]
+        source = sources[0] if len(sources) == 1 else None
         if not source or run['conclusion'] != 'success':
             return None
         parent = request(f'actions/runs/{source[1]}')
@@ -85,6 +89,11 @@ def outputs(plan):
 
 
 if __name__ == '__main__':
+    # Automatic dispatch happens at the end of Build; wait for its final result.
+    for attempt in range(30):
+        if api('actions/runs/' + os.environ['DEPLOY_RUN_ID'])['status'] == 'completed':
+            break
+        time.sleep(2)
     plan = select(os.environ['DEPLOY_RUN_ID'])
     purpose = os.environ.get('DEPLOY_PURPOSE')
     if plan and ((purpose == 'deploy' and plan['action'] != 'deploy') or (purpose == 'cleanup' and plan['action'] == 'deploy')):

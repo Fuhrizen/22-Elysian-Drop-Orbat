@@ -8,11 +8,11 @@ def resolve(event, request=api):
         plan = select(event['workflow_run']['id'], request, allow_ci=True)
         if not plan or plan['action'] != 'deploy' or plan['mode'] != 'preview':
             return {'enabled': 'false'}
-        return {'enabled': 'true', 'revision': plan['revision'], 'target': f"pr-{plan['number']}"}
+        return {'enabled': 'true', 'revision': plan['revision'], 'target': f"pr-{plan['number']}", 'branch': request(f"pulls/{plan['number']}")['head']['ref']}
     revision = event['after']
     if event.get('ref') != 'refs/heads/main' or request('branches/main')['commit']['sha'] != revision:
         return {'enabled': 'false'}
-    return {'enabled': 'true', 'revision': revision, 'target': 'main'}
+    return {'enabled': 'true', 'revision': revision, 'target': 'main', 'branch': 'main'}
 
 if __name__ == '__main__':
     with open(os.environ['GITHUB_EVENT_PATH']) as stream:

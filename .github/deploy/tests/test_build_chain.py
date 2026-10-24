@@ -11,11 +11,13 @@ class BuildChain(unittest.TestCase):
     def request(self, path):
         if path == 'actions/runs/42': return self.ci
         if path == 'actions/runs/84': return self.build
+        if path == 'actions/runs/84/jobs?per_page=100': return {'jobs':[{'name':'Source','steps':[{'name':self.provenance}]}]}
         if path == 'pulls/12': return self.pr
         if path == 'branches/main': return {'commit': {'sha':'c'*40}}
         raise AssertionError(path)
 
     def setUp(self):
+        self.provenance="CI run 42"
         self.ci=run()
         self.pr=pull()
         self.build=run(id=84,event='workflow_run',path='.github/workflows/build.yml',
@@ -23,7 +25,7 @@ class BuildChain(unittest.TestCase):
 
     def test_build_uses_pr_revision_and_deploy_uses_build_image_run(self):
         self.assertEqual(resolve({'workflow_run':{'id':42}},self.request),
-                         {'enabled':'true','revision':'a'*40,'target':'pr-12'})
+                         {'enabled':'true','revision':'a'*40,'target':'pr-12','branch':'feature'})
         plan=select(84,self.request)
         self.assertEqual(plan['revision'],'a'*40)
         self.assertEqual(plan['run']['id'],84)
@@ -34,7 +36,7 @@ class BuildChain(unittest.TestCase):
         self.assertIsNone(select(84,self.request))
         self.ci['conclusion']='success';self.pr['head']['sha']='b'*40
         self.assertIsNone(select(84,self.request))
-        self.pr=pull();self.build['display_title']='Unrelated build'
+        self.pr=pull();self.provenance='Unrelated build'
         self.assertIsNone(select(84,self.request))
 
     def test_main_push_builds_latest_main_without_ci(self):

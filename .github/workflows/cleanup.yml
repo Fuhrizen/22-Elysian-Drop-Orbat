@@ -1,5 +1,5 @@
-name: Preview cleanup
-run-name: Preview cleanup
+name: Prune
+run-name: Prune - ${{ github.event.workflow_run.head_branch || github.ref_name }}
 on:
   workflow_run:
     workflows: [Preview events]

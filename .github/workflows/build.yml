@@ -1,5 +1,5 @@
 name: Build
-run-name: ${{ github.event_name == 'push' && 'Build / main' || format('Build / CI {0}', github.event.workflow_run.id) }}
+run-name: Build - ${{ github.event.workflow_run.head_branch || github.ref_name }}
 on:
   push:
     branches: [main]
@@ -24,6 +24,7 @@ jobs:
       enabled: ${{ steps.source.outputs.enabled }}
       revision: ${{ steps.source.outputs.revision }}
       target: ${{ steps.source.outputs.target }}
+      branch: ${{ steps.source.outputs.branch }}
     steps:
       - name: Check out trusted selector
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -31,7 +32,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
           sparse-checkout: .github/deploy
-      - name: Select current source
+      - name: CI run ${{ github.event.workflow_run.id || 0 }}
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
@@ -106,3 +107,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 trusted-controller/.github/deploy/build_cleanup.py
+      - name: Queue deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_BRANCH: ${{ needs.source.outputs.branch }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          from urllib.request import Request, urlopen
+          body={'ref':'main','inputs':{'run_id':os.environ['GITHUB_RUN_ID'],'branch':os.environ['DEPLOY_BRANCH']}}
+          req=Request('https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/actions/workflows/deploy.yml/dispatches',data=json.dumps(body).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+          with urlopen(req): pass
+          PYTHON
