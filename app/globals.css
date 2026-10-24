@@ -6086,3 +6086,34 @@ body{--page-inset:14px;padding:var(--page-inset)}.admin-page .table-panel,.admin
 /* Preserve the ledger honour colour inside the ORBAT identity typography. */
 .role-person .orbat-medal-count,.role-profile .orbat-medal-count {color:#ddc17c;}
 .orbat-medal-count svg {color:inherit;}
+
+/* Public pages scroll across the full viewport, including the side gutters. */
+html:has(main:not(.admin-page)) {
+  height: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+body:has(main:not(.admin-page)) {
+  height: auto;
+  min-height: 100dvh;
+  display: block;
+  overflow: visible;
+}
+main:not(.admin-page) {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+main:not(.admin-page) .terminal-tabs {
+  display: block;
+  height: auto;
+  overflow: visible;
+}
+main:not(.admin-page) .terminal-tabs > [data-slot=tabs-content] {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  overscroll-behavior: auto;
+  scrollbar-gutter: auto;
+}
