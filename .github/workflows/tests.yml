@@ -5,7 +5,7 @@ permissions:
   contents: read
 jobs:
   verify:
-    name: Verify application and dependencies
+    name: Essentials
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

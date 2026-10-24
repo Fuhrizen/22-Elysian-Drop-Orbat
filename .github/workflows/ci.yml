@@ -1,5 +1,5 @@
 name: CI
-run-name: "PR #${{ github.event.pull_request.number }} / ${{ github.event.action }} / ${{ github.event.pull_request.head.ref }}"
+run-name: "PR #${{ github.event.pull_request.number }}"
 on:
   pull_request:
     branches: [main]
@@ -11,18 +11,18 @@ concurrency:
   cancel-in-progress: true
 jobs:
   lifecycle:
-    name: Preview lifecycle / Stop draft or remove closed PR
+    name: Lifecycle
     if: github.event.pull_request.draft || github.event.pull_request.state == 'closed'
     runs-on: ubuntu-24.04
     steps:
       - name: Hand lifecycle event to Deploy
         run: echo 'Deploy will recheck the current PR state and stop or remove its preview.'
   tests:
-    name: "PR #${{ github.event.pull_request.number }} / Tests"
+    name: Tests
     if: github.event.pull_request.state == 'open' && !github.event.pull_request.draft
     uses: ./.github/workflows/tests.yml
   build:
-    name: "PR #${{ github.event.pull_request.number }} / Image"
+    name: Build
     needs: tests
     uses: ./.github/workflows/build.yml
     permissions:

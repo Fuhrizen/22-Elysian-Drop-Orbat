@@ -64,7 +64,7 @@ def outputs(plan):
     label = 'main' if not number else f'PR #{number}'
     return {'enabled': 'true', 'mode': plan['mode'], 'target': 'main' if not number else f'pr-{number}',
             'environment': 'main' if not number else 'development',
-            'name': f'{plan["action"].capitalize()} / {label} / {plan["revision"][:7]}',
+            'name': f'{plan["action"].capitalize()} / {label}',
             'url': 'https://22orbat.ivenity.co.uk' if not number else f'https://pr-{number}.22preview.ivenity.co.uk'}
 
 

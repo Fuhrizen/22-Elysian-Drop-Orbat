@@ -14,7 +14,7 @@ permissions:
   contents: read
 jobs:
   target:
-    name: Resolve live deployment target
+    name: Target
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 3
