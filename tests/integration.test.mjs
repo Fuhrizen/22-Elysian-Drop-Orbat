@@ -11,7 +11,7 @@ const url=s=>'data:text/javascript;base64,'+Buffer.from(s).toString('base64');
 const countdownUrl=url(compile(readFileSync('lib/countdown.ts','utf8'))),libUrl=url(compile(readFileSync('lib/regiment.ts','utf8')));
 const sql=adapter.sqlite;globalThis.__testDb=adapter;
 const dbUrl=url('export const database=()=>globalThis.__testDb;export const runtimeSecret=()=>"initial-test-key";export const runtimeOrigin=()=>"";export const runtimeClientAddress=()=>"test-client";');
-const route=readFileSync('app/api/regiment/route.ts','utf8').replace("'@/db/raw'",JSON.stringify(dbUrl)).replace("'@/lib/regiment'",JSON.stringify(libUrl)).replace("'@/lib/countdown'",JSON.stringify(countdownUrl));
+const route=readFileSync('app/api/regiment/route.ts','utf8').replace("'@/scripts/medal-digest.mjs'",JSON.stringify(new URL('../scripts/medal-digest.mjs',import.meta.url).href)).replace("'@/db/raw'",JSON.stringify(dbUrl)).replace("'@/lib/regiment'",JSON.stringify(libUrl)).replace("'@/lib/countdown'",JSON.stringify(countdownUrl));
 const {GET,POST}=await import(url(compile(route)));let token='';
 const headers=(admin=true)=>({'X-Regiment-Machine':'11111111-1111-4111-8111-111111111111',...(admin&&token?{Authorization:'Bearer '+token}:{})});
 async function get(query='',admin=true){const r=await GET(new Request('https://test/api/regiment'+query,{headers:headers(admin)}));return {status:r.status,data:await r.json()}}

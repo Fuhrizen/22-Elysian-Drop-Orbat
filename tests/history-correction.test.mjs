@@ -14,7 +14,7 @@ test('historic membership corrections update sealed records and service history 
   const url=s=>'data:text/javascript;base64,'+Buffer.from(s).toString('base64');
   globalThis.__historyTestDb=adapter;
   const dbUrl=url('export const database=()=>globalThis.__historyTestDb;export const runtimeSecret=()=>"history-test-key";export const runtimeOrigin=()=>"";export const runtimeClientAddress=()=>"history-test-client";');
-  const route=readFileSync('app/api/regiment/route.ts','utf8').replace("'@/db/raw'",JSON.stringify(dbUrl)).replace("'@/lib/regiment'",JSON.stringify(url(compile(readFileSync('lib/regiment.ts','utf8'))))).replace("'@/lib/countdown'",JSON.stringify(url(compile(readFileSync('lib/countdown.ts','utf8')))));
+  const route=readFileSync('app/api/regiment/route.ts','utf8').replace("'@/scripts/medal-digest.mjs'",JSON.stringify(new URL('../scripts/medal-digest.mjs',import.meta.url).href)).replace("'@/db/raw'",JSON.stringify(dbUrl)).replace("'@/lib/regiment'",JSON.stringify(url(compile(readFileSync('lib/regiment.ts','utf8'))))).replace("'@/lib/countdown'",JSON.stringify(url(compile(readFileSync('lib/countdown.ts','utf8')))));
   const {GET,POST}=await import(url(compile(route)));
   let token='';
   const headers=admin=>({...admin&&token?{Authorization:'Bearer '+token}:{},'X-Regiment-Machine':'22222222-2222-4222-8222-222222222222'});
