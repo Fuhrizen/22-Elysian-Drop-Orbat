@@ -79,7 +79,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEPLOY_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
           ORBAT_ADMIN_ACCESS_KEY: ${{ secrets.ADMIN_ACCESS_KEY }}
+          ORBAT_DISCORD_MEDALS_WEBHOOK_URL: ${{ secrets.DISCORD_MEDALS_WEBHOOK_URL }}
         run: python3 .github/deploy/reconcile.py event
+
 
 
 
