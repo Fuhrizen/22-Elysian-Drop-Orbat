@@ -44,17 +44,23 @@ export async function flushDigest(db,url,{now=Math.floor(Date.now()/1000),send=f
  }
 }
 
+export function environmentWebhook() {
+ const file=process.env.DISCORD_MEDALS_WEBHOOK_FILE;
+ return (process.env.DISCORD_MEDALS_WEBHOOK_URL || (file?readFileSync(file,'utf8'):'')).trim();
+}
 export function startDigestWorker(db) {
  if(process.env.DISCORD_MEDALS_ENABLED!=='true')return ()=>{};
- const file=process.env.DISCORD_MEDALS_WEBHOOK_FILE;
- let url;
- try {
-  const secret=file?readFileSync(file,'utf8').trim():(process.env.DISCORD_MEDALS_WEBHOOK_URL||'').trim();
-  if(!secret)return ()=>{};
-  url=webhookURL(secret);
- } catch {console.warn('Discord medal digest disabled: check webhook configuration.');return ()=>{};}
  let stopped=false,busy=false;
- const tick=async()=>{if(stopped||busy||existsSync(process.env.ORBAT_DEPLOYMENT_GUARD||'/app/data/.deployment-paused'))return;busy=true;try{await flushDigest(db,url);}catch{console.warn('Discord medal digest worker deferred.');}finally{busy=false;}};
+ const tick=async()=>{
+  if(stopped||busy||existsSync(process.env.ORBAT_DEPLOYMENT_GUARD||'/app/data/.deployment-paused'))return;
+  busy=true;
+  try {
+   // Resolve on every tick so administrator edits take effect without restarting.
+   const value=environmentWebhook() || db.prepare("SELECT value FROM settings WHERE key='discord_medals_webhook'").get()?.value || '';
+   if(value)await flushDigest(db,webhookURL(value));
+  }catch{console.warn('Discord medal digest deferred: check webhook configuration.');}
+  finally{busy=false;}
+ };
  const timer=setInterval(tick,15000);timer.unref();void tick();
  return ()=>{stopped=true;clearInterval(timer);};
 }

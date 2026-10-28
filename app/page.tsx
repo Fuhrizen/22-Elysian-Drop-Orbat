@@ -1,4 +1,5 @@
 'use client';
+import { DiscordMedalsSettings } from '@/components/discord-medals-settings';
 import { StubberIcon } from '@/components/stubber-icon';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Crosshair, Plane, Flame, Shield, LockKeyhole, Radio, HeartPulse, Zap, Target, Users, CalendarDays, Plus, Terminal, ChevronRight, Check, RefreshCw, LogOut, Settings2, UserPlus, Search, CheckCheck, ShieldCheck, X, Fingerprint, Award } from 'lucide-react';
@@ -603,7 +604,7 @@ export default function Home() {
         <section className="bureau-panel" hidden={adminArea !== 'operation_audits'} aria-label="operation audits"><div className="admin-panel-content">
         <OperationAudits onChanged={async()=>{await load();setRecordRevision(n=>n+1)}} recent={data.operationAudits || []} busy={busy} onReset={() => open('reset_orbat', { title: data.configuration?.title || 'Regimental operation', disposition: 'declare' })}/>
         </div></section>
-        <section className="bureau-panel" hidden={adminArea !== 'medals'}><MedalAdmin users={data.users} revision={recordRevision} onChanged={()=>{void load();setRecordRevision(n=>n+1)}}/></section>
+        <section className="bureau-panel" hidden={adminArea !== 'medals'}><DiscordMedalsSettings/><MedalAdmin users={data.users} revision={recordRevision} onChanged={()=>{void load();setRecordRevision(n=>n+1)}}/></section>
         <section className="bureau-panel" hidden={adminArea !== 'audit'} aria-label="audit"><div className="admin-panel-content">
         <div className="admin-section-head">
         <div>
@@ -724,3 +725,4 @@ export default function Home() {
     </AlertDialog>
     </>;
 }
+

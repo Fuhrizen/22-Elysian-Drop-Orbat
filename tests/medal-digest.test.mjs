@@ -42,3 +42,28 @@ test('invalid destinations rejected, payload bounded, previews disabled by defau
  assert.ok(message.embeds[0].description.length<4096);
  assert.doesNotThrow(()=>startDigestWorker({}));
 });
+
+test('mixed batch omits revoked awards, including revocations before a retry',async()=>{
+ const db=fixture();try{
+  award(db,'keep');award(db,'revoke');
+  db.prepare("UPDATE medal_awards SET revoked_at='now' WHERE id='revoke'").run();
+  const now=Math.floor(Date.now()/1000)+901;
+  await flushDigest(db,url,{now,send:async(u,o)=>{assert.equal(JSON.parse(o.body).embeds[0].footer.text.startsWith('1 award ·'),true);return {ok:false,status:500};}});
+  db.prepare("UPDATE medal_awards SET revoked_at='now' WHERE id='keep'").run();
+  let sends=0;await flushDigest(db,url,{now:now+3601,send:async()=>{sends++;return ack();}});
+  assert.equal(sends,0);
+ }finally{db.close();}
+});
+
+test('environment webhook can be blank and configured without exposing a saved URL',async()=>{
+ const {environmentWebhook}=await import('../scripts/medal-digest.mjs');
+ const prior=process.env.DISCORD_MEDALS_WEBHOOK_URL,priorFile=process.env.DISCORD_MEDALS_WEBHOOK_FILE;
+ try{
+  delete process.env.DISCORD_MEDALS_WEBHOOK_FILE;
+  process.env.DISCORD_MEDALS_WEBHOOK_URL='   ';assert.equal(environmentWebhook(),'');
+  process.env.DISCORD_MEDALS_WEBHOOK_URL=url;assert.equal(environmentWebhook(),url);
+ }finally{
+  if(prior===undefined)delete process.env.DISCORD_MEDALS_WEBHOOK_URL;else process.env.DISCORD_MEDALS_WEBHOOK_URL=prior;
+  if(priorFile===undefined)delete process.env.DISCORD_MEDALS_WEBHOOK_FILE;else process.env.DISCORD_MEDALS_WEBHOOK_FILE=priorFile;
+ }
+});
