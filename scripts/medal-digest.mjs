@@ -10,9 +10,9 @@ const clean=(value,limit=180)=>String(value||'').replace(/[\\`*_~|<>@\[\]]/g,'')
 export function payload(rows,id) {
  // One compact embed even for large award sessions; avoid pings from user content.
  let description='By order of Regimental Command, let the service of these soldiers of the 22nd Elysian Drop Regiment be entered into the rolls of honour. Their deeds stand as an example to their comrades and a credit to the regiment.\n\n';let shown=0;
- for(const row of rows){const reason=clean(row.reason,512);const line=`• **${clean(row.name)} has been awarded:**\n**${clean(row.medal)}**\n${reason?`> ${reason}\n`:""}\n`;if(description.length+line.length>3400)break;description+=line;shown++;}
+ for(const row of rows){const reason=clean(row.reason,512);const line=`• **${clean(row.rank)} ${clean(row.name)}**\nHas been awarded:\n\`\`\`\n${clean(row.medal)}\n\`\`\`\n${reason?`> ${reason}\n`:""}\n`;if(description.length+line.length>3400)break;description+=line;shown++;}
  if(shown<rows.length)description+=`\n…and ${rows.length-shown} additional awards. View the regimental ledger for the full record.`;
- return {username:'22nd Regimental Honours',avatar_url:'https://22orbat.ivenity.co.uk/regiment-logo-transparent.png',allowed_mentions:{parse:[]},embeds:[{title:'XXII // HONOURS DISPATCH',description,color:0xddc17c,author:{name:'DEPARTMENTO MUNITORUM · XXII',icon_url:'https://22orbat.ivenity.co.uk/imperial-aquila.png'},footer:{text:'For the honour of Elysia. The Emperor protects.',icon_url:'https://22orbat.ivenity.co.uk/imperial-aquila.png'}}]};
+ return {username:'22nd Regimental Honours',avatar_url:'https://22orbat.ivenity.co.uk/regiment-logo-transparent.png',allowed_mentions:{parse:[]},embeds:[{title:'DEPARTMENTO MUNITORUM — HONOURS & CITATIONS',description,color:0xddc17c,author:{name:'DEPARTMENTO MUNITORUM · XXII',icon_url:'https://22orbat.ivenity.co.uk/regiment-logo-transparent.png'},footer:{text:'For the honour of Elysia. The Emperor protects.',icon_url:'https://22orbat.ivenity.co.uk/regiment-logo-transparent.png'}}]};
 }
 
 export async function flushDigest(db,url,{now=Math.floor(Date.now()/1000),send=fetch}={}) {
@@ -24,7 +24,7 @@ export async function flushDigest(db,url,{now=Math.floor(Date.now()/1000),send=f
   db.exec('COMMIT');
  } catch(e){db.exec('ROLLBACK');throw e;}
  if(!batch)return false;
- const rows=db.prepare('SELECT p.name,m.name AS medal,m.description AS purpose,a.comment AS reason FROM discord_medal_items i JOIN medal_awards a ON a.id=i.award_id JOIN personnel p ON p.id=a.user_id JOIN medals m ON m.id=a.medal_id LEFT JOIN operation_audits o ON o.id=a.operation_id WHERE i.batch_id=? AND a.revoked_at IS NULL AND (a.operation_id IS NULL OR o.hidden=0) ORDER BY a.created,a.id').all(batch.id);
+ const rows=db.prepare('SELECT p.name,p.rank,m.name AS medal,m.description AS purpose,a.comment AS reason FROM discord_medal_items i JOIN medal_awards a ON a.id=i.award_id JOIN personnel p ON p.id=a.user_id JOIN medals m ON m.id=a.medal_id LEFT JOIN operation_audits o ON o.id=a.operation_id WHERE i.batch_id=? AND a.revoked_at IS NULL AND (a.operation_id IS NULL OR o.hidden=0) ORDER BY a.created,a.id').all(batch.id);
  if(!rows.length){db.prepare('UPDATE discord_medal_batches SET delivered_at=?,lease_until=0 WHERE id=? AND token=?').run(now,batch.id,token);return true;}
  let retry=Math.min(3600,30*2**Math.min(batch.attempts,7));
  try {
@@ -62,6 +62,7 @@ export function startDigestWorker(db) {
  const timer=setInterval(tick,15000);timer.unref();void tick();
  return ()=>{stopped=true;clearInterval(timer);};
 }
+
 
 
 

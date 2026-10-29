@@ -18,6 +18,9 @@ async function get(query='',admin=true){const r=await GET(new Request('https://t
 async function post(body,admin=true){if(body.action==='discord_medals_webhook'&&admin){if(body.revision===undefined)body.revision=(await get('?discord_medals=1')).data.webhookRevision;if(body.confirm===undefined)body.confirm=true;}if(['clear_all','destroy_orbat'].includes(body.action) && !('confirmed' in body))body.confirmed=true;if(admin && ['clear_all','destroy_orbat'].includes(body.action) && !('confirmedDispositions' in body))body.confirmedDispositions=(await get()).data.assignments.filter(a=>/^(reserve|tentative|absent):/.test(a.slot)).map(({slot,user_id,created})=>({slot,user_id,created})).sort((a,b)=>a.slot.localeCompare(b.slot));if(body.action==='slot_role')body.icon=({'Melta Gunner':'melta','Guardsmen':'trooper','Section Leader':'leader','Medicae':'medic'})[body.role];const r=await POST(new Request('https://test/api/regiment',{method:'POST',headers:{'Content-Type':'application/json',...headers(admin)},body:JSON.stringify(body)}));return {status:r.status,data:await r.json()}}
 let r=await post({action:'login',key:'initial-test-key'});token=r.data.sessionToken;
 await get();
+assert.equal((await post({action:'discord_medals_cancel'},false)).status,401);
+assert.equal((await post({action:'discord_medals_cancel'})).status,400);
+assert.equal((await post({action:'discord_medals_cancel',confirm:true})).status,200);
 // Webhook controls are administrator-only, write-only and do not send empty batches.
 assert.equal((await get('?discord_medals=1',false)).status,401);
 assert.equal((await post({action:'discord_medals_push'},false)).status,401);
