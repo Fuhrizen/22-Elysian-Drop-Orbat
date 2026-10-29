@@ -32,9 +32,43 @@ export function DiscordMedalsSettings(){
  <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}><AlertDialogContent className="regiment-dialog"><AlertDialogTitle>Cancel pending dispatches?</AlertDialogTitle><AlertDialogDescription>This discards all queued announcements, including automatic and early dispatches. Medal records are kept. Messages already being sent or accepted by Discord cannot be recalled.</AlertDialogDescription><AlertDialogFooter><AlertDialogCancel disabled={busy}>Keep dispatches</AlertDialogCancel><button className="secondary danger-text" disabled={busy} onClick={()=>void command({action:'discord_medals_cancel',confirm:true})}>Confirm cancellation</button></AlertDialogFooter></AlertDialogContent></AlertDialog>
  {error&&<p className="form-error" role="alert">{error}</p>}{notice&&<p className="discord-notice" role="status">{notice}</p>}
  <div className="discord-preview-heading"><h3>Discord message preview</h3><button className="secondary" type="button" onClick={()=>void load()}>Refresh</button></div><p className="field-help">Revoked medals are excluded. Discord uses its own fonts and background; the gold accent and citation content below are sent with the dispatch. Medal names are plain text.</p>
- {embed?<div className="discord-message" aria-label="Discord message preview"><img className="discord-avatar" src={data!.preview!.avatar_url} alt="Regimental crest"/><div className="discord-message-body"><div className="discord-sender"><strong>{data!.preview!.username}</strong><span>APP</span><time>{new Date(clock).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</time></div><div className="discord-embed" style={{borderLeftColor:'#'+embed.color.toString(16).padStart(6,'0')}}><strong className="discord-embed-title">{embed.title}</strong><img src={embed.thumbnail.url} alt="Imperial Aquila" style={{width:96,height:40,objectFit:'contain',marginRight:12}}/><div className="discord-embed-copy">{embed.description.split('```').map((block,i)=>i%2?<pre key={i} style={{margin:'6px 0',padding:12,background:'#1e1f22',border:'1px solid #484a50',borderRadius:4,whiteSpace:'pre-wrap',fontFamily:'monospace'}}>{block.trim()}</pre>:<div style={{display:'flex',flexDirection:'column',gap:3}}>{block.split('\n').map((line,j)=>{const trimmed=line.replace(/^[-•*›››\s]+/,'');return trimmed?<div key={j} style={{marginRight:6}}>• {discordInline(trimmed)}</div>:null;}).filter(Boolean)}</div>))}</div><div style={{display:'flex',alignItems:'center',gap:8,fontSize:11,color:'#b5bac1',marginTop:12}}><img src={embed.footer.icon_url} alt="" width={54} height={22}/>{embed.footer.text}</div></div></div></div>:<div className="discord-empty">Relay paused. No awarded medals waiting to be announced.</div>}
+ {embed ? (
+  <div className="discord-message" aria-label="Discord message preview">
+    <img className="discord-avatar" src={data!.preview!.avatar_url} alt="Regimental crest"/>
+    <div className="discord-message-body">
+      <div className="discord-sender">
+        <strong>{data!.preview!.username}</strong>
+        <span>APP</span>
+        <time>{new Date(clock).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</time>
+      </div>
+      <div className="discord-embed" style={{borderLeftColor:'#'+embed.color.toString(16).padStart(6,'0')}}>
+        <strong className="discord-embed-title">{embed.title}</strong>
+        <img src={embed.thumbnail.url} alt="Imperial Aquila" style={{width:96,height:40,objectFit:'contain',marginRight:12}}/>
+        <div className="discord-embed-copy">
+          {embed.description.split('```').map((block,i) => i%2 ? (
+            <pre key={i} style={{margin:'6px 0',padding:12,background:'#1e1f22',border:'1px solid #484a50',borderRadius:4,whiteSpace:'pre-wrap',fontFamily:'monospace'}}>{block.trim()}</pre>
+          ) : (
+            <div style={{display:'flex',flexDirection:'column',gap:3}}>
+              {block.split('\n').map((line,j) => {
+                const trimmed = line.replace(/^[-•*›››\s]+/,'');
+                return trimmed ? (
+                  <div key={j} style={{marginRight:6}}>• {discordInline(trimmed)}</div>
+                ) : null;
+              }).filter(Boolean)}
+            </div>
+          ))}
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:8,fontSize:11,color:'#b5bac1',marginTop:12}}>
+          <img src={embed.footer.icon_url} alt="" width={54} height={22}/>
+          {embed.footer.text}
+        </div>
+      </div>
+    </div>
+  </div>
+ ) : (
+  <div className="discord-empty">Relay paused. No awarded medals waiting to be announced.</div>
+ )}
  </div>;
 }
-
 
 
