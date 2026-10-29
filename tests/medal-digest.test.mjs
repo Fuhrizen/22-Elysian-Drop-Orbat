@@ -72,7 +72,7 @@ test('environment webhook can be blank and configured without exposing a saved U
 test('dispatch congratulates recipients, includes medal purpose and omits banner/footer',()=>{
  const message=payload([{name:'Player',medal:'Valour',purpose:'Recognises courage under fire',reason:'Held the line @everyone <script>'}],7);
  assert.match(message.avatar_url,/regiment-logo-transparent.png$/);
- const embed=message.embeds[0];assert.equal(embed.color,0xddc17c);assert.equal(embed.image,undefined);assert.equal(embed.footer,undefined);assert.match(embed.description,/^Congratulations to the following members/);assert.match(embed.description,/\[Valour\]\(https:\/\/22orbat\.ivenity\.co\.uk\/\?view=ledger "Recognises courage under fire"\)/);
+ const embed=message.embeds[0];assert.equal(embed.color,0xddc17c);assert.equal(embed.image,undefined);assert.match(embed.footer.text,/Emperor protects/);assert.match(embed.description,/^By order of Regimental Command/);assert.match(embed.description,/has been awarded:/);assert.match(embed.description,/\*\*Valour\*\*/);assert.doesNotMatch(embed.description,/https?:|\]\(/);
  assert.match(embed.description,/> Held the line everyone script/);assert.doesNotMatch(embed.description,/@everyone|<script>/);
  assert.deepEqual(message.allowed_mentions,{parse:[]});
 });

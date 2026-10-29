@@ -9,10 +9,10 @@ export function webhookURL(value) {
 const clean=(value,limit=180)=>String(value||'').replace(/[\\`*_~|<>@\[\]]/g,'').replace(/[\r\n]+/g,' ').slice(0,limit);
 export function payload(rows,id) {
  // One compact embed even for large award sessions; avoid pings from user content.
- let description='Congratulations to the following members of the 22nd Drop Regiment on receiving these medals in recognition of their service.\n\n';let shown=0;
- for(const row of rows){const reason=clean(row.reason,512);const purpose=clean(row.purpose).replace(/["']/g,'’').replace(/[()]/g,'');const medal=purpose?`[${clean(row.medal)}](https://22orbat.ivenity.co.uk/?view=ledger "${purpose}")`:clean(row.medal);const line=`• **${clean(row.name)}** — ${medal}\n${reason?`> ${reason}\n`:""}\n`;if(description.length+line.length>3400)break;description+=line;shown++;}
+ let description='By order of Regimental Command, let the service of these soldiers of the 22nd Elysian Drop Regiment be entered into the rolls of honour. Their deeds stand as an example to their comrades and a credit to the regiment.\n\n';let shown=0;
+ for(const row of rows){const reason=clean(row.reason,512);const line=`• **${clean(row.name)} has been awarded:**\n**${clean(row.medal)}**\n${reason?`> ${reason}\n`:""}\n`;if(description.length+line.length>3400)break;description+=line;shown++;}
  if(shown<rows.length)description+=`\n…and ${rows.length-shown} additional awards. View the regimental ledger for the full record.`;
- return {username:'22nd Regimental Honours',avatar_url:'https://22orbat.ivenity.co.uk/regiment-logo-transparent.png',allowed_mentions:{parse:[]},embeds:[{title:'XXII // HONOURS DISPATCH',description,color:0xddc17c}]};
+ return {username:'22nd Regimental Honours',avatar_url:'https://22orbat.ivenity.co.uk/regiment-logo-transparent.png',allowed_mentions:{parse:[]},embeds:[{title:'XXII // HONOURS DISPATCH',description,color:0xddc17c,author:{name:'DEPARTMENTO MUNITORUM · XXII',icon_url:'https://22orbat.ivenity.co.uk/imperial-aquila.png'},footer:{text:'For the honour of Elysia. The Emperor protects.',icon_url:'https://22orbat.ivenity.co.uk/imperial-aquila.png'}}]};
 }
 
 export async function flushDigest(db,url,{now=Math.floor(Date.now()/1000),send=fetch}={}) {
