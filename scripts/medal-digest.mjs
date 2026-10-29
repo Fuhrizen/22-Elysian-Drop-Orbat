@@ -9,10 +9,8 @@ export function webhookURL(value) {
 const clean=value=>String(value||'').replace(/[\\`*_~|<>@\[\]]/g,'').replace(/[\r\n]+/g,' ').slice(0,180);
 export function payload(rows,id) {
  // One compact embed even for large award sessions; avoid pings from user content.
- const groups=new Map();
- for(const row of rows){const key=clean(row.name)+' — '+clean(row.medal);groups.set(key,(groups.get(key)||0)+1);}
  let description='';let shown=0;
- for(const [name,count] of groups){const line=`• ${name}${count>1?` × ${count}`:''}\n`;if(description.length+line.length>3400)break;description+=line;shown+=count;}
+ for(const row of rows){const line=`• ${clean(row.name)} — ${clean(row.medal)}\n`;if(description.length+line.length>3400)break;description+=line;shown++;}
  if(shown<rows.length)description+=`\n…and ${rows.length-shown} additional awards. View the regimental ledger for the full record.`;
  return {username:'22nd Regimental Honours',allowed_mentions:{parse:[]},embeds:[{title:'Regimental honours awarded',description,color:0xb4cf53,footer:{text:`${rows.length} award${rows.length===1?'':'s'} · Batch ${id}`}}]};
 }

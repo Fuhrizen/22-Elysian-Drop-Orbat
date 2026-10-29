@@ -16,7 +16,7 @@ test('awards share a persistent fifteen-minute batch; no early sends or historic
   award(db,'a');award(db,'b');const batch=db.prepare('SELECT * FROM discord_medal_batches').get();
   assert.ok(batch.due_at>=Math.floor(Date.now()/1000)+899);
   let sent=0;
-  const send=async(u,o)=>{sent++;const body=JSON.parse(o.body);assert.equal(body.embeds.length,1);assert.match(body.embeds[0].description,/× 2/);assert.deepEqual(body.allowed_mentions,{parse:[]});return ack();};
+  const send=async(u,o)=>{sent++;const body=JSON.parse(o.body);assert.equal(body.embeds.length,1);assert.equal(body.embeds[0].description.split('\n').filter(Boolean).length,2);assert.doesNotMatch(body.embeds[0].description,/×/);assert.deepEqual(body.allowed_mentions,{parse:[]});return ack();};
   assert.equal(await flushDigest(db,url,{now:batch.due_at-1,send}),false);assert.equal(sent,0);
   assert.equal(await flushDigest(db,url,{now:batch.due_at,send}),true);assert.equal(sent,1);
   assert.equal(await flushDigest(db,url,{now:batch.due_at+100,send}),false);assert.equal(sent,1);
