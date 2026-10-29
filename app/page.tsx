@@ -535,7 +535,7 @@ export default function Home() {
         </div>
         <span>XXII / SPEAR PLATOON<br />{data.users.length} PERSONNEL ON ROLL</span>
         </div>
-        <nav className="bureau-navigation" aria-label="Administration sections">{[{ id: 'players', code: '01', name: 'Personnel records' }, { id: 'clearance', code: '02', name: 'Administrator key' }, { id: 'countdown', code: '03', name: 'Operation configuration' }, { id: 'operation_audits', code: '04', name: 'Operation archive' }, { id: 'audit', code: '05', name: 'Assignment history' }, {id:'medals',code:'06',name:'Medals'}].map(area => <button key={area.id} type="button" aria-pressed={adminArea === area.id} onClick={() => setAdminArea(area.id)}>
+        <nav className="bureau-navigation" aria-label="Administration sections">{[{ id: 'players', code: '01', name: 'Personnel records' }, { id: 'clearance', code: '02', name: 'Administrator key' }, { id: 'countdown', code: '03', name: 'Operation configuration' }, { id: 'operation_audits', code: '04', name: 'Operation archive' }, { id: 'audit', code: '05', name: 'Assignment history' }, {id:'medals',code:'06',name:'Medals'}, {id:'webhooks',code:'07',name:'Discord feed'}].map(area => <button key={area.id} type="button" aria-pressed={adminArea === area.id} onClick={() => setAdminArea(area.id)}>
             <span>{area.code}</span>
             <strong>{area.name}</strong>
             </button>)}</nav>
@@ -604,7 +604,8 @@ export default function Home() {
         <section className="bureau-panel" hidden={adminArea !== 'operation_audits'} aria-label="operation audits"><div className="admin-panel-content">
         <OperationAudits onChanged={async()=>{await load();setRecordRevision(n=>n+1)}} recent={data.operationAudits || []} busy={busy} onReset={() => open('reset_orbat', { title: data.configuration?.title || 'Regimental operation', disposition: 'declare' })}/>
         </div></section>
-        <section className="bureau-panel" hidden={adminArea !== 'medals'}><DiscordMedalsSettings/><MedalAdmin users={data.users} revision={recordRevision} onChanged={()=>{void load();setRecordRevision(n=>n+1)}}/></section>
+        <section className="bureau-panel" hidden={adminArea !== 'medals'}><MedalAdmin users={data.users} revision={recordRevision} onChanged={()=>{void load();setRecordRevision(n=>n+1)}}/></section>
+        <section className="bureau-panel" hidden={adminArea !== 'webhooks'}>{adminArea==='webhooks'&&<DiscordMedalsSettings/>}</section>
         <section className="bureau-panel" hidden={adminArea !== 'audit'} aria-label="audit"><div className="admin-panel-content">
         <div className="admin-section-head">
         <div>
@@ -725,4 +726,5 @@ export default function Home() {
     </AlertDialog>
     </>;
 }
+
 

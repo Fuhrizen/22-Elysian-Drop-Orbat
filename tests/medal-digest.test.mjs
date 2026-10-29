@@ -16,7 +16,7 @@ test('awards share a persistent fifteen-minute batch; no early sends or historic
   award(db,'a');award(db,'b');const batch=db.prepare('SELECT * FROM discord_medal_batches').get();
   assert.ok(batch.due_at>=Math.floor(Date.now()/1000)+899);
   let sent=0;
-  const send=async(u,o)=>{sent++;const body=JSON.parse(o.body);assert.equal(body.embeds.length,1);assert.equal(body.embeds[0].description.split('\n').filter(Boolean).length,2);assert.doesNotMatch(body.embeds[0].description,/×/);assert.deepEqual(body.allowed_mentions,{parse:[]});return ack();};
+  const send=async(u,o)=>{sent++;const body=JSON.parse(o.body);assert.equal(body.embeds.length,1);assert.equal(body.embeds[0].description.split('\n').filter(line=>line.startsWith('•')).length,2);assert.doesNotMatch(body.embeds[0].description,/×/);assert.deepEqual(body.allowed_mentions,{parse:[]});return ack();};
   assert.equal(await flushDigest(db,url,{now:batch.due_at-1,send}),false);assert.equal(sent,0);
   assert.equal(await flushDigest(db,url,{now:batch.due_at,send}),true);assert.equal(sent,1);
   assert.equal(await flushDigest(db,url,{now:batch.due_at+100,send}),false);assert.equal(sent,1);
@@ -36,11 +36,11 @@ test('rate limit is retried later and an active lease prevents competing workers
  assert.equal(await flushDigest(db,url,{now:now+61,send:async()=>{sent++;return ack();}}),false);release(await ack());await sending;assert.equal(sent,0);
  }finally{db.close();}
 });
-test('invalid destinations rejected, payload bounded, previews disabled by default',()=>{
+test('invalid destinations rejected, payload bounded, explicitly disabled workers do not start',()=>{
  for(const value of ['http://discord.com/api/webhooks/1/t','https://example.com/api/webhooks/1/t','https://discord.com.evil/api/webhooks/1/t'])assert.throws(()=>webhookURL(value));
  const message=payload(Array.from({length:1000},(_,i)=>({name:'Member '+i,medal:'Award'})),1);
  assert.ok(message.embeds[0].description.length<4096);
- assert.doesNotThrow(()=>startDigestWorker({}));
+ const prior=process.env.DISCORD_MEDALS_ENABLED;process.env.DISCORD_MEDALS_ENABLED='false';try{assert.doesNotThrow(()=>startDigestWorker({}));}finally{if(prior===undefined)delete process.env.DISCORD_MEDALS_ENABLED;else process.env.DISCORD_MEDALS_ENABLED=prior;}
 });
 
 test('mixed batch omits revoked awards, including revocations before a retry',async()=>{
@@ -48,7 +48,7 @@ test('mixed batch omits revoked awards, including revocations before a retry',as
   award(db,'keep');award(db,'revoke');
   db.prepare("UPDATE medal_awards SET revoked_at='now' WHERE id='revoke'").run();
   const now=Math.floor(Date.now()/1000)+901;
-  await flushDigest(db,url,{now,send:async(u,o)=>{assert.equal(JSON.parse(o.body).embeds[0].footer.text.startsWith('1 award ·'),true);return {ok:false,status:500};}});
+  await flushDigest(db,url,{now,send:async(u,o)=>{assert.equal(JSON.parse(o.body).embeds[0].footer.text.includes('1 award ·'),true);return {ok:false,status:500};}});
   db.prepare("UPDATE medal_awards SET revoked_at='now' WHERE id='keep'").run();
   let sends=0;await flushDigest(db,url,{now:now+3601,send:async()=>{sends++;return ack();}});
   assert.equal(sends,0);
@@ -67,3 +67,4 @@ test('environment webhook can be blank and configured without exposing a saved U
   if(priorFile===undefined)delete process.env.DISCORD_MEDALS_WEBHOOK_FILE;else process.env.DISCORD_MEDALS_WEBHOOK_FILE=priorFile;
  }
 });
+

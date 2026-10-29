@@ -9,10 +9,10 @@ export function webhookURL(value) {
 const clean=value=>String(value||'').replace(/[\\`*_~|<>@\[\]]/g,'').replace(/[\r\n]+/g,' ').slice(0,180);
 export function payload(rows,id) {
  // One compact embed even for large award sessions; avoid pings from user content.
- let description='';let shown=0;
- for(const row of rows){const line=`• ${clean(row.name)} — ${clean(row.medal)}\n`;if(description.length+line.length>3400)break;description+=line;shown++;}
+ let description='**DEPARTMENTO MUNITORUM / XXII**\nREGIMENTAL LEDGER // HONOURS\n\n';let shown=0;
+ for(const row of rows){const line=`• **${clean(row.name)}** — ${clean(row.medal)}\n`;if(description.length+line.length>3400)break;description+=line;shown++;}
  if(shown<rows.length)description+=`\n…and ${rows.length-shown} additional awards. View the regimental ledger for the full record.`;
- return {username:'22nd Regimental Honours',allowed_mentions:{parse:[]},embeds:[{title:'Regimental honours awarded',description,color:0xb4cf53,footer:{text:`${rows.length} award${rows.length===1?'':'s'} · Batch ${id}`}}]};
+ return {username:'22nd Regimental Honours',allowed_mentions:{parse:[]},embeds:[{title:'XXII // HONOURS DISPATCH',description,color:0xb4cf53,footer:{text:`22ND DROP REGIMENT · ${rows.length} award${rows.length===1?'':'s'} · Dispatch ${id}`}}]};
 }
 
 export async function flushDigest(db,url,{now=Math.floor(Date.now()/1000),send=fetch}={}) {
@@ -47,7 +47,7 @@ export function environmentWebhook() {
  return (process.env.DISCORD_MEDALS_WEBHOOK_URL || (file?readFileSync(file,'utf8'):'')).trim();
 }
 export function startDigestWorker(db) {
- if(process.env.DISCORD_MEDALS_ENABLED!=='true')return ()=>{};
+ if(process.env.DISCORD_MEDALS_ENABLED==='false')return ()=>{};
  let stopped=false,busy=false;
  const tick=async()=>{
   if(stopped||busy||existsSync(process.env.ORBAT_DEPLOYMENT_GUARD||'/app/data/.deployment-paused'))return;
@@ -62,3 +62,4 @@ export function startDigestWorker(db) {
  const timer=setInterval(tick,15000);timer.unref();void tick();
  return ()=>{stopped=true;clearInterval(timer);};
 }
+

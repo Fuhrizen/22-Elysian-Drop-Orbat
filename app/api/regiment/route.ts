@@ -82,8 +82,12 @@ export async function GET(req: Request) {
             if(!admin)return fail('Administrator clearance required.',401);
             const locked=!!environmentWebhook();
             const configured=locked || !!(await setting('discord_medals_webhook'))?.value;
-            const rows=await db.prepare("SELECT p.name,m.name AS medal FROM discord_medal_items i JOIN discord_medal_batches b ON b.id=i.batch_id JOIN medal_awards a ON a.id=i.award_id JOIN personnel p ON p.id=a.user_id JOIN medals m ON m.id=a.medal_id LEFT JOIN operation_audits o ON o.id=a.operation_id WHERE b.id=(SELECT id FROM discord_medal_batches WHERE delivered_at IS NULL ORDER BY id LIMIT 1) AND a.revoked_at IS NULL AND (a.operation_id IS NULL OR o.hidden=0) ORDER BY b.id,a.created,a.id").all<{name:string;medal:string}>();
-            return json({locked,configured,sending:process.env.DISCORD_MEDALS_ENABLED==='true',preview:rows.results.length?payload(rows.results,'preview'):null});
+            const batches=await db.prepare("SELECT b.id,b.due_at,b.retry_at,b.lease_until,COUNT(*) AS count FROM discord_medal_batches b JOIN discord_medal_items i ON i.batch_id=b.id JOIN medal_awards a ON a.id=i.award_id LEFT JOIN operation_audits o ON o.id=a.operation_id WHERE b.delivered_at IS NULL AND a.revoked_at IS NULL AND (a.operation_id IS NULL OR o.hidden=0) GROUP BY b.id ORDER BY MAX(b.due_at,b.retry_at,b.lease_until),b.id").all<{id:number;due_at:number;retry_at:number;lease_until:number;count:number}>();
+            const next=batches.results[0];
+            const rows=next?await db.prepare("SELECT p.name,m.name AS medal FROM discord_medal_items i JOIN medal_awards a ON a.id=i.award_id JOIN personnel p ON p.id=a.user_id JOIN medals m ON m.id=a.medal_id LEFT JOIN operation_audits o ON o.id=a.operation_id WHERE i.batch_id=? AND a.revoked_at IS NULL AND (a.operation_id IS NULL OR o.hidden=0) ORDER BY a.created,a.id").bind(next.id).all<{name:string;medal:string}>():{results:[]};
+            const sending=process.env.DISCORD_MEDALS_ENABLED!=='false';
+            const maintenance=existsSync(process.env.ORBAT_DEPLOYMENT_GUARD||'/app/data/.deployment-paused');
+            return json({locked,configured,sending,maintenance,serverNow:Date.now(),pending:batches.results.reduce((n,b)=>n+b.count,0),nextAt:next?Math.max(next.due_at,next.retry_at,next.lease_until)*1000:null,retrying:!!next?.retry_at,preview:rows.results.length?payload(rows.results,next!.id):null});
         }
         if(params.has('change_log')) {
             if(!admin) return fail('Administrator clearance required.',401);
@@ -353,6 +357,14 @@ async function handlePost(req: Request) {
             const target=field(b.slot);
             if(!(await currentSlots()).some(s=>s.id===target) && ! /^(reserve|tentative|absent):/.test(target)) return fail('Invalid role.');
         } else if (!await isAdmin(req)) return fail('Administrator clearance required.', 401);
+        if(action==='discord_medals_push') {
+            if(process.env.DISCORD_MEDALS_ENABLED==='false')return fail('Sending is disabled in this environment.',409);
+            if(existsSync(process.env.ORBAT_DEPLOYMENT_GUARD||'/app/data/.deployment-paused'))return fail('Deployment maintenance is in progress.',409);
+            if(!environmentWebhook() && !(await setting('discord_medals_webhook'))?.value)return fail('Configure a webhook first.',409);
+            // Only accelerate nonempty batches. Preserve rate-limit backoff and in-flight leases.
+            const result=await db.prepare("UPDATE discord_medal_batches SET due_at=MIN(due_at,unixepoch()) WHERE delivered_at IS NULL AND EXISTS(SELECT 1 FROM discord_medal_items i JOIN medal_awards a ON a.id=i.award_id LEFT JOIN operation_audits o ON o.id=a.operation_id WHERE i.batch_id=discord_medal_batches.id AND a.revoked_at IS NULL AND (a.operation_id IS NULL OR o.hidden=0))").run();
+            return json({ok:true,queued:result.meta.changes>0});
+        }
         if(action==='discord_medals_webhook') {
             if(environmentWebhook())return fail('Webhook is managed by the environment.',409);
             const value=typeof b.url==='string'?b.url.trim():'';
@@ -660,4 +672,5 @@ export async function POST(req: Request) {
     }
     return response;
 }
+
 
