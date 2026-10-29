@@ -9,10 +9,10 @@ export function webhookURL(value) {
 const clean=(value,limit=180)=>String(value||'').replace(/[\\`*_~|<>@\[\]]/g,'').replace(/[\r\n]+/g,' ').slice(0,limit);
 export function payload(rows,id) {
  // One compact embed even for large award sessions; avoid pings from user content.
- let description='**DEPARTMENTO MUNITORUM / XXII**\nREGIMENTAL LEDGER // HONOURS\n\n';let shown=0;
- for(const row of rows){const reason=clean(row.reason,512);const line=`• **${clean(row.name)}** — ${clean(row.medal)}\n${reason?`> ${reason}\n`:""}\n`;if(description.length+line.length>3400)break;description+=line;shown++;}
+ let description='Congratulations to the following members of the 22nd Drop Regiment on receiving these medals in recognition of their service.\n\n';let shown=0;
+ for(const row of rows){const reason=clean(row.reason,512);const purpose=clean(row.purpose).replace(/["']/g,'’').replace(/[()]/g,'');const medal=purpose?`[${clean(row.medal)}](https://22orbat.ivenity.co.uk/?view=ledger "${purpose}")`:clean(row.medal);const line=`• **${clean(row.name)}** — ${medal}\n${reason?`> ${reason}\n`:""}\n`;if(description.length+line.length>3400)break;description+=line;shown++;}
  if(shown<rows.length)description+=`\n…and ${rows.length-shown} additional awards. View the regimental ledger for the full record.`;
- return {username:'22nd Regimental Honours',avatar_url:'https://22orbat.ivenity.co.uk/regiment-logo-transparent.png',allowed_mentions:{parse:[]},embeds:[{title:'XXII // HONOURS DISPATCH',description,color:0xddc17c,image:{url:'https://raw.githubusercontent.com/Fuhrizen/22-Elysian-Drop-Orbat/1527391eb1c2757498efb5991c850b96cfc671d4/public/discord-honours-banner.png'},footer:{text:`22ND DROP REGIMENT · ${rows.length} award${rows.length===1?'':'s'} · Dispatch ${id}`}}]};
+ return {username:'22nd Regimental Honours',avatar_url:'https://22orbat.ivenity.co.uk/regiment-logo-transparent.png',allowed_mentions:{parse:[]},embeds:[{title:'XXII // HONOURS DISPATCH',description,color:0xddc17c}]};
 }
 
 export async function flushDigest(db,url,{now=Math.floor(Date.now()/1000),send=fetch}={}) {
@@ -24,7 +24,7 @@ export async function flushDigest(db,url,{now=Math.floor(Date.now()/1000),send=f
   db.exec('COMMIT');
  } catch(e){db.exec('ROLLBACK');throw e;}
  if(!batch)return false;
- const rows=db.prepare('SELECT p.name,m.name AS medal,a.comment AS reason FROM discord_medal_items i JOIN medal_awards a ON a.id=i.award_id JOIN personnel p ON p.id=a.user_id JOIN medals m ON m.id=a.medal_id LEFT JOIN operation_audits o ON o.id=a.operation_id WHERE i.batch_id=? AND a.revoked_at IS NULL AND (a.operation_id IS NULL OR o.hidden=0) ORDER BY a.created,a.id').all(batch.id);
+ const rows=db.prepare('SELECT p.name,m.name AS medal,m.description AS purpose,a.comment AS reason FROM discord_medal_items i JOIN medal_awards a ON a.id=i.award_id JOIN personnel p ON p.id=a.user_id JOIN medals m ON m.id=a.medal_id LEFT JOIN operation_audits o ON o.id=a.operation_id WHERE i.batch_id=? AND a.revoked_at IS NULL AND (a.operation_id IS NULL OR o.hidden=0) ORDER BY a.created,a.id').all(batch.id);
  if(!rows.length){db.prepare('UPDATE discord_medal_batches SET delivered_at=?,lease_until=0 WHERE id=? AND token=?').run(now,batch.id,token);return true;}
  let retry=Math.min(3600,30*2**Math.min(batch.attempts,7));
  try {
@@ -62,5 +62,6 @@ export function startDigestWorker(db) {
  const timer=setInterval(tick,15000);timer.unref();void tick();
  return ()=>{stopped=true;clearInterval(timer);};
 }
+
 
 

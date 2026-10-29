@@ -48,7 +48,7 @@ test('mixed batch omits revoked awards, including revocations before a retry',as
   award(db,'keep');award(db,'revoke');
   db.prepare("UPDATE medal_awards SET revoked_at='now' WHERE id='revoke'").run();
   const now=Math.floor(Date.now()/1000)+901;
-  await flushDigest(db,url,{now,send:async(u,o)=>{assert.equal(JSON.parse(o.body).embeds[0].footer.text.includes('1 award ·'),true);return {ok:false,status:500};}});
+  await flushDigest(db,url,{now,send:async(u,o)=>{assert.equal(JSON.parse(o.body).embeds[0].description.split('\n').filter(line=>line.startsWith('•')).length,1);return {ok:false,status:500};}});
   db.prepare("UPDATE medal_awards SET revoked_at='now' WHERE id='keep'").run();
   let sends=0;await flushDigest(db,url,{now:now+3601,send:async()=>{sends++;return ack();}});
   assert.equal(sends,0);
@@ -69,10 +69,11 @@ test('environment webhook can be blank and configured without exposing a saved U
 });
 
 
-test('dispatch includes a regimental identity, banner and sanitized award citation',()=>{
- const message=payload([{name:'Player',medal:'Valour',reason:'Held the line @everyone <script>'}],7);
+test('dispatch congratulates recipients, includes medal purpose and omits banner/footer',()=>{
+ const message=payload([{name:'Player',medal:'Valour',purpose:'Recognises courage under fire',reason:'Held the line @everyone <script>'}],7);
  assert.match(message.avatar_url,/regiment-logo-transparent.png$/);
- const embed=message.embeds[0];assert.equal(embed.color,0xddc17c);assert.match(embed.image.url,/discord-honours-banner.png$/);
+ const embed=message.embeds[0];assert.equal(embed.color,0xddc17c);assert.equal(embed.image,undefined);assert.equal(embed.footer,undefined);assert.match(embed.description,/^Congratulations to the following members/);assert.match(embed.description,/\[Valour\]\(https:\/\/22orbat\.ivenity\.co\.uk\/\?view=ledger "Recognises courage under fire"\)/);
  assert.match(embed.description,/> Held the line everyone script/);assert.doesNotMatch(embed.description,/@everyone|<script>/);
  assert.deepEqual(message.allowed_mentions,{parse:[]});
 });
+
