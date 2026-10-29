@@ -10,9 +10,9 @@ const clean=(value,limit=180)=>String(value||'').replace(/[\\`*_~|<>@\[\]]/g,'')
 export function payload(rows,id) {
  // One compact embed even for large award sessions; avoid pings from user content.
  let description='By order of Regimental Command, let the service of these soldiers of the 22nd Elysian Drop Regiment be entered into the rolls of honour. Their deeds stand as an example to their comrades and a credit to the regiment.\n\n';let shown=0;
- for(const row of rows){const reason=clean(row.reason,512);const line=`• **${clean(row.rank)} ${clean(row.name)}**\nHas been awarded:\n\`\`\`\n${clean(row.medal)}\n\`\`\`\n${reason?`> ${reason}\n`:""}\n`;if(description.length+line.length>3400)break;description+=line;shown++;}
+ for(const row of rows){const reason=clean(row.reason,512);const line=`• **${clean(row.rank)} ${clean(row.name)}**\nHas been awarded:\n**${clean(row.medal)}**\n${reason?`> ${reason}\n`:""}\n`;if(description.length+line.length>3400)break;description+=line;shown++;}
  if(shown<rows.length)description+=`\n…and ${rows.length-shown} additional awards. View the regimental ledger for the full record.`;
- return {username:'22nd Regimental Honours',avatar_url:'https://22orbat.ivenity.co.uk/regiment-logo-transparent.png',allowed_mentions:{parse:[]},embeds:[{title:'DEPARTMENTO MUNITORUM — HONOURS & CITATIONS',description,color:0xddc17c,author:{name:'DEPARTMENTO MUNITORUM · XXII',icon_url:'https://22orbat.ivenity.co.uk/regiment-logo-transparent.png'},footer:{text:'For the honour of Elysia. The Emperor protects.',icon_url:'https://22orbat.ivenity.co.uk/regiment-logo-transparent.png'}}]};
+ return {username:'22nd Regimental Honours',avatar_url:'https://22orbat.ivenity.co.uk/regiment-logo-transparent.png',allowed_mentions:{parse:[]},embeds:[{title:'DEPARTMENTO MUNITORUM — HONOURS & CITATIONS',description,color:0xddc17c,thumbnail:{url:'https://raw.githubusercontent.com/Fuhrizen/22-Elysian-Drop-Orbat/a18b8bc8a81d891512c4ffbdda8c6f261c4cfa48/public/discord-aquila-gold.png'},footer:{text:'For the honour of Elysia. The Emperor protects.',icon_url:'https://raw.githubusercontent.com/Fuhrizen/22-Elysian-Drop-Orbat/a18b8bc8a81d891512c4ffbdda8c6f261c4cfa48/public/discord-aquila-gold.png'}}]};
 }
 
 export async function flushDigest(db,url,{now=Math.floor(Date.now()/1000),send=fetch}={}) {
@@ -62,6 +62,7 @@ export function startDigestWorker(db) {
  const timer=setInterval(tick,15000);timer.unref();void tick();
  return ()=>{stopped=true;clearInterval(timer);};
 }
+
 
 
 
