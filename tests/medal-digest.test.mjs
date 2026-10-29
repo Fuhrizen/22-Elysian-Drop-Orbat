@@ -68,3 +68,11 @@ test('environment webhook can be blank and configured without exposing a saved U
  }
 });
 
+
+test('dispatch includes a regimental identity, banner and sanitized award citation',()=>{
+ const message=payload([{name:'Player',medal:'Valour',reason:'Held the line @everyone <script>'}],7);
+ assert.match(message.avatar_url,/regiment-logo-transparent.png$/);
+ const embed=message.embeds[0];assert.equal(embed.color,0xddc17c);assert.match(embed.image.url,/discord-honours-banner.png$/);
+ assert.match(embed.description,/> Held the line everyone script/);assert.doesNotMatch(embed.description,/@everyone|<script>/);
+ assert.deepEqual(message.allowed_mentions,{parse:[]});
+});

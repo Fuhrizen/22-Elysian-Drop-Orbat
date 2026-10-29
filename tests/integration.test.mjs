@@ -15,7 +15,7 @@ const route=readFileSync('app/api/regiment/route.ts','utf8').replace("'@/scripts
 const {GET,POST}=await import(url(compile(route)));let token='';
 const headers=(admin=true)=>({'X-Regiment-Machine':'11111111-1111-4111-8111-111111111111',...(admin&&token?{Authorization:'Bearer '+token}:{})});
 async function get(query='',admin=true){const r=await GET(new Request('https://test/api/regiment'+query,{headers:headers(admin)}));return {status:r.status,data:await r.json()}}
-async function post(body,admin=true){if(['clear_all','destroy_orbat'].includes(body.action) && !('confirmed' in body))body.confirmed=true;if(admin && ['clear_all','destroy_orbat'].includes(body.action) && !('confirmedDispositions' in body))body.confirmedDispositions=(await get()).data.assignments.filter(a=>/^(reserve|tentative|absent):/.test(a.slot)).map(({slot,user_id,created})=>({slot,user_id,created})).sort((a,b)=>a.slot.localeCompare(b.slot));if(body.action==='slot_role')body.icon=({'Melta Gunner':'melta','Guardsmen':'trooper','Section Leader':'leader','Medicae':'medic'})[body.role];const r=await POST(new Request('https://test/api/regiment',{method:'POST',headers:{'Content-Type':'application/json',...headers(admin)},body:JSON.stringify(body)}));return {status:r.status,data:await r.json()}}
+async function post(body,admin=true){if(body.action==='discord_medals_webhook'&&admin){if(body.revision===undefined)body.revision=(await get('?discord_medals=1')).data.webhookRevision;if(body.confirm===undefined)body.confirm=true;}if(['clear_all','destroy_orbat'].includes(body.action) && !('confirmed' in body))body.confirmed=true;if(admin && ['clear_all','destroy_orbat'].includes(body.action) && !('confirmedDispositions' in body))body.confirmedDispositions=(await get()).data.assignments.filter(a=>/^(reserve|tentative|absent):/.test(a.slot)).map(({slot,user_id,created})=>({slot,user_id,created})).sort((a,b)=>a.slot.localeCompare(b.slot));if(body.action==='slot_role')body.icon=({'Melta Gunner':'melta','Guardsmen':'trooper','Section Leader':'leader','Medicae':'medic'})[body.role];const r=await POST(new Request('https://test/api/regiment',{method:'POST',headers:{'Content-Type':'application/json',...headers(admin)},body:JSON.stringify(body)}));return {status:r.status,data:await r.json()}}
 let r=await post({action:'login',key:'initial-test-key'});token=r.data.sessionToken;
 await get();
 // Webhook controls are administrator-only, write-only and do not send empty batches.
@@ -25,6 +25,8 @@ assert.equal((await post({action:'discord_medals_push'})).status,409);
 assert.equal((await post({action:'discord_medals_webhook',url:'https://example.com/hook'})).status,400);
 const webhook='https://discord.com/api/webhooks/123/test-token';
 assert.equal((await post({action:'discord_medals_webhook',url:webhook})).status,200);
+assert.equal((await post({action:'discord_medals_webhook',url:webhook,revision:'stale'})).status,409);
+assert.equal((await post({action:'discord_medals_webhook',url:'',confirm:false})).status,400);
 let feed=(await get('?discord_medals=1')).data;
 assert.equal(feed.configured,true);assert.equal(feed.pending,0);assert.equal(feed.nextAt,null);assert.equal(feed.preview,null);
 assert.equal(JSON.stringify(feed).includes('test-token'),false);
