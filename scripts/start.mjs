@@ -7,7 +7,8 @@ if (!configured && !adminAccessKey()) {
     db.close();
     throw new Error('Set ADMIN_ACCESS_KEY or ADMIN_ACCESS_KEY_FILE before first startup.');
 }
-db.close();
+const {startDigestWorker}=await import('./medal-digest.mjs');
+startDigestWorker(db.sqlite);
 const bundled = new URL('../server.js', import.meta.url);
 if (existsSync(bundled))
     await import(bundled.href);
@@ -18,3 +19,4 @@ else {
         process.on(signal, () => child.kill(signal));
     child.on('exit', code => process.exit(code ?? 0));
 }
+

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 
-type Sound = 'click' | 'success' | 'error' | 'boot' | 'boot-end' | 'clearance' | 'key' | 'remove' | 'reassign' | 'destroy' | 'seal' | 'navigate' | 'edit';
+type Sound = 'upload' | 'click' | 'success' | 'error' | 'boot' | 'boot-end' | 'clearance' | 'key' | 'remove' | 'reassign' | 'destroy' | 'seal' | 'navigate' | 'edit';
 export function terminalSound(sound: Sound) {
     window.dispatchEvent(new CustomEvent('terminal-sound', { detail: sound }));
 }
@@ -32,6 +32,7 @@ export function TerminalAudio({loading,error}:{loading:boolean;error:string}) {
             const {context, master} = engine;
             if(kind === 'boot') return;
             const profiles: Partial<Record<Sound,number[][]>> = {
+                upload:[[196,294,392,523,784,1047]],
                 key:[[392,587,784,1175],[440,660,880,1320]],
                 remove:[[330,220,165],[294,196,147]],
                 destroy:[[220,165,110,55],[196,147,98,49]],
@@ -133,3 +134,4 @@ export function TerminalAudio({loading,error}:{loading:boolean;error:string}) {
     }
     return <button type="button" data-terminal-audio className={'online uplink-audio '+(error?'vox-fault':'')+(muted?' disconnected':'')} title={unavailable?'Terminal audio unavailable':muted||!ready?'Connect terminal audio':'Disconnect terminal audio'} aria-label={muted||!ready?'Connect terminal audio':'Disconnect terminal audio'} aria-pressed={!muted && ready} onClick={toggle}><i/>{unavailable?'VOX AUDIO UNAVAILABLE':muted?'VOX UPLINK DISCONNECTED':!ready?'VOX UPLINK / CLICK TO CONNECT':error?'VOX INTERRUPTED':loading?'ESTABLISHING UPLINK':'VOX UPLINK ESTABLISHED'}</button>;
 }
+

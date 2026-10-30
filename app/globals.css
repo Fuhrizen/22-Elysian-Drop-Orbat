@@ -6117,3 +6117,9 @@ main:not(.admin-page) .terminal-tabs > [data-slot=tabs-content] {
   overscroll-behavior: auto;
   scrollbar-gutter: auto;
 }
+
+/* Keep operation honours beside the member rather than on a separate row. */
+.chart-position .archive-position-member {display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-width:0;}
+.archive-position-member>span:first-child {min-width:0;overflow-wrap:anywhere;}
+.archive-position-member .archive-medal {flex:none;margin-left:0;}
+.archive-position-member .medal-tooltip {left:auto;right:0;}

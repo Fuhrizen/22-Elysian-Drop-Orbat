@@ -16,7 +16,7 @@ test('configured origin rejects internal/sibling origins and previews cannot ena
     const url = source => 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
     const raw = url('export const database=()=>globalThis.__boundaryDb; export const runtimeSecret=()=>"test-key"; export const runtimeOrigin=()=>"https://preview.example.test"; export const runtimeClientAddress=()=>"test";');
     const source = readFileSync('app/api/regiment/route.ts', 'utf8')
-      .replace("'@/db/raw'", JSON.stringify(raw))
+      .replace("'@/scripts/medal-digest.mjs'",JSON.stringify(new URL('../scripts/medal-digest.mjs',import.meta.url).href)).replace("'@/db/raw'", JSON.stringify(raw))
       .replace("'@/lib/regiment'", JSON.stringify(url(compile(readFileSync('lib/regiment.ts', 'utf8')))))
       .replace("'@/lib/countdown'", JSON.stringify(url(compile(readFileSync('lib/countdown.ts', 'utf8')))));
     const { GET, POST } = await import(url(compile(source)));
@@ -45,3 +45,4 @@ test('configured origin rejects internal/sibling origins and previews cannot ena
     assert.equal((await post({ action: 'register', name: 'Unpaused write' }, origin, sessionToken)).status, 200);
   } finally { delete process.env.ORBAT_DISABLE_AUTO_RENEW; delete process.env.ORBAT_DEPLOYMENT_GUARD; adapter.close(); delete globalThis.__boundaryDb; rmSync(directory, { recursive: true, force: true }); }
 });
+

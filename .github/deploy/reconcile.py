@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Reconcile trusted main builds and approved PR images without checking out PR code."""
 import fcntl
+import hashlib
 import signal
 import tempfile
 import ipaddress
@@ -35,7 +36,7 @@ UTILITY_IMAGE = 'node:24-bookworm-slim'
 
 def command(args, extra=None):
     env = {k: v for k, v in os.environ.items()
-           if k not in ('GH_TOKEN', 'GITHUB_TOKEN', 'ORBAT_ADMIN_ACCESS_KEY')}
+           if k not in ('GH_TOKEN', 'GITHUB_TOKEN', 'ORBAT_ADMIN_ACCESS_KEY', 'ORBAT_DISCORD_MEDALS_WEBHOOK_URL')}
     return subprocess.check_output(args, text=True, env={**env, **(extra or {})}).strip()
 
 
@@ -112,6 +113,9 @@ def config(target, revision, image, address, port, production=False):
         'stop_grace_period': '30s',
         'logging': {'driver': 'json-file', 'options': {'max-size': '5m', 'max-file': '2'}},
         'networks': ['app']}
+    if production:
+        service['environment'].update({'DISCORD_MEDALS_CONFIG':hashlib.sha256(os.environ.get('ORBAT_DISCORD_MEDALS_WEBHOOK_URL','').encode()).hexdigest(),'DISCORD_MEDALS_ENABLED':'true','DISCORD_MEDALS_WEBHOOK_FILE':'/run/secrets/discord_medals'})
+        service['volumes'].append(f'{target}/discord-medals.key:/run/secrets/discord_medals:ro')
     return {'project': 'orbat-' + name, 'revision': revision, 'port': port, 'origin': origin,
             'compose': {'services': {'terminal': service}, 'networks': {'app': {'driver': 'bridge'}}}}
 
@@ -174,6 +178,12 @@ def deploy(target, candidate, key, guard=None):
     target.chmod(0o700)
     recover(target)
     previous = read(target / 'current.json')
+    if target.name == 'production':
+        with tempfile.NamedTemporaryFile(mode='w', dir=target, delete=False) as stream:
+            stream.write(os.environ.get('ORBAT_DISCORD_MEDALS_WEBHOOK_URL',''))
+            hook_file=Path(stream.name)
+        hook_file.chmod(0o444)
+        hook_file.replace(target/'discord-medals.key')
     if guard:
         guard()
     if previous == candidate:
@@ -387,5 +397,6 @@ if __name__ == '__main__':
     with (ROOT / '.reconcile.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         reconcile(sys.argv[1])
+
 
 

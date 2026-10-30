@@ -1,3 +1,4 @@
+import { environmentWebhook, webhookURL, sendTestWebhook } from '@/scripts/medal-digest.mjs';
 import { database, runtimeSecret, runtimeOrigin, runtimeClientAddress } from '@/db/raw';
 import { slotRoleOptions, canLockSlot, editableRoles, slotTypes, ranks, slotPhraseRole, phraseRole, comparePersonnel, defaultOperationConfig, defaultLayout, validateLayout, defaultRolePolicy, type OrbatLayout, type RolePolicy, validRolePolicy } from '@/lib/regiment';
 import { defaultCountdown, localEpoch, type CountdownConfig } from '@/lib/countdown';
@@ -77,6 +78,19 @@ export async function GET(req: Request) {
         const admin = await isAdmin(req);
         const db = database();
         const params = new URL(req.url).searchParams;
+        if(params.has('discord_medals')) {
+            if(!admin)return fail('Administrator clearance required.',401);
+            const locked=!!environmentWebhook();
+            const savedWebhook=(await setting('discord_medals_webhook'))?.value || '';
+            const configured=locked || !!savedWebhook;
+            const webhookRevision=await hash(savedWebhook);
+            const batches=await db.prepare("SELECT b.id,b.due_at,b.retry_at,b.lease_until,COUNT(*) AS count FROM discord_medal_batches b JOIN discord_medal_items i ON i.batch_id=b.id JOIN medal_awards a ON a.id=i.award_id LEFT JOIN operation_audits o ON o.id=a.operation_id WHERE b.delivered_at IS NULL AND a.revoked_at IS NULL AND (a.operation_id IS NULL OR o.hidden=0) GROUP BY b.id ORDER BY MAX(b.due_at,b.retry_at,b.lease_until),b.id").all<{id:number;due_at:number;retry_at:number;lease_until:number;count:number}>();
+            const next=batches.results[0];
+            const rows=next?await db.prepare("SELECT p.name,p.rank,m.name AS medal,m.description AS purpose,a.comment AS reason FROM discord_medal_items i JOIN medal_awards a ON a.id=i.award_id JOIN personnel p ON p.id=a.user_id JOIN medals m ON m.id=a.medal_id LEFT JOIN operation_audits o ON o.id=a.operation_id WHERE i.batch_id=? AND a.revoked_at IS NULL AND (a.operation_id IS NULL OR o.hidden=0) ORDER BY a.created,a.id").bind(next.id).all<{name:string;rank:string;medal:string;reason:string}>():{results:[]};
+            const sending=process.env.DISCORD_MEDALS_ENABLED!=='false';
+            const maintenance=existsSync(process.env.ORBAT_DEPLOYMENT_GUARD||'/app/data/.deployment-paused');
+            return json({locked,configured,webhookRevision,batchIds:batches.results.map(b=>b.id),inFlight:batches.results.some(b=>b.lease_until*1000>Date.now()),sending,maintenance,serverNow:Date.now(),pending:batches.results.reduce((n,b)=>n+b.count,0),nextAt:next?Math.max(next.due_at,next.retry_at,next.lease_until)*1000:null,retrying:!!next?.retry_at,awards:rows.results});
+        }
         if(params.has('change_log')) {
             if(!admin) return fail('Administrator clearance required.',401);
             const q=field(params.get('q'),100), before=Number(params.get('before') || Number.MAX_SAFE_INTEGER);
@@ -345,6 +359,42 @@ async function handlePost(req: Request) {
             const target=field(b.slot);
             if(!(await currentSlots()).some(s=>s.id===target) && ! /^(reserve|tentative|absent):/.test(target)) return fail('Invalid role.');
         } else if (!await isAdmin(req)) return fail('Administrator clearance required.', 401);
+        if(action==='discord_medals_test') {
+            if(process.env.DISCORD_MEDALS_ENABLED==='false')return fail('Sending is disabled in this environment.',409);
+            if(existsSync(process.env.ORBAT_DEPLOYMENT_GUARD||'/app/data/.deployment-paused'))return fail('Deployment maintenance is in progress.',409);
+            const value=environmentWebhook() || (await setting('discord_medals_webhook'))?.value || '';
+            if(!value)return fail('Configure a webhook first.',409);
+            if(!await throttle(req,'discord_webhook_test'))return fail('Too many test requests. Try again later.',429);
+            try{await sendTestWebhook(value);return json({ok:true});}
+            catch{return fail('Discord did not confirm the test message. Check the webhook or try again later.',502);}
+        }
+        if(action==='discord_medals_cancel') {
+            if(b.confirm!==true)return fail('Confirm cancellation of pending dispatches.',400);
+            // An in-flight HTTP request cannot safely be recalled; leave its lease intact.
+            const result=await db.prepare("UPDATE discord_medal_batches SET delivered_at=unixepoch(),token='',lease_until=0 WHERE delivered_at IS NULL AND lease_until<=unixepoch()").run();
+            return json({ok:true,cancelled:result.meta.changes});
+        }
+        if(action==='discord_medals_push') {
+            if(process.env.DISCORD_MEDALS_ENABLED==='false')return fail('Sending is disabled in this environment.',409);
+            if(existsSync(process.env.ORBAT_DEPLOYMENT_GUARD||'/app/data/.deployment-paused'))return fail('Deployment maintenance is in progress.',409);
+            if(!environmentWebhook() && !(await setting('discord_medals_webhook'))?.value)return fail('Configure a webhook first.',409);
+            // Only accelerate nonempty batches. Preserve rate-limit backoff and in-flight leases.
+            const result=await db.prepare("UPDATE discord_medal_batches SET due_at=MIN(due_at,unixepoch()) WHERE delivered_at IS NULL AND EXISTS(SELECT 1 FROM discord_medal_items i JOIN medal_awards a ON a.id=i.award_id LEFT JOIN operation_audits o ON o.id=a.operation_id WHERE i.batch_id=discord_medal_batches.id AND a.revoked_at IS NULL AND (a.operation_id IS NULL OR o.hidden=0))").run();
+            const batches=await db.prepare("SELECT DISTINCT b.id FROM discord_medal_batches b JOIN discord_medal_items i ON i.batch_id=b.id JOIN medal_awards a ON a.id=i.award_id LEFT JOIN operation_audits o ON o.id=a.operation_id WHERE b.delivered_at IS NULL AND a.revoked_at IS NULL AND (a.operation_id IS NULL OR o.hidden=0)").all<{id:number}>();
+            return json({ok:true,queued:result.meta.changes>0,batchIds:batches.results.map(b=>b.id)});
+        }
+        if(action==='discord_medals_webhook') {
+            if(environmentWebhook())return fail('Webhook is managed by the environment.',409);
+            const prior=(await setting('discord_medals_webhook'))?.value || '';
+            if(b.revision!==await hash(prior))return fail('Webhook configuration changed. Refresh before editing.',409);
+            if(prior && b.confirm!==true)return fail('Confirm replacement or removal of the configured webhook.',400);
+            const value=typeof b.url==='string'?b.url.trim():'';
+            if(value.length>2048)return fail('Invalid Discord webhook URL.');
+            if(value){try{webhookURL(value);}catch{return fail('Invalid Discord webhook URL.');}}
+            const saved=await db.prepare("INSERT INTO settings(key,value) SELECT 'discord_medals_webhook',? WHERE COALESCE((SELECT value FROM settings WHERE key='discord_medals_webhook'),'')=? ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(value,prior).run();
+            if(!saved.meta.changes)return fail('Webhook configuration changed. Refresh before editing.',409);
+            return json({ok:true});
+        }
         if(action==='add_warning' || action==='add_strike') {
             const user=field(b.user),kind='strike',reason=field(b.reason,1000);
             if(!reason||!await db.prepare('SELECT id FROM personnel WHERE id=?').bind(user).first())return fail('Select a member, warning type and reason.');
@@ -644,3 +694,8 @@ export async function POST(req: Request) {
     }
     return response;
 }
+
+
+
+
+

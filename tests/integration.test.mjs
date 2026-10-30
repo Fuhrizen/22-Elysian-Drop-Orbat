@@ -11,13 +11,42 @@ const url=s=>'data:text/javascript;base64,'+Buffer.from(s).toString('base64');
 const countdownUrl=url(compile(readFileSync('lib/countdown.ts','utf8'))),libUrl=url(compile(readFileSync('lib/regiment.ts','utf8')));
 const sql=adapter.sqlite;globalThis.__testDb=adapter;
 const dbUrl=url('export const database=()=>globalThis.__testDb;export const runtimeSecret=()=>"initial-test-key";export const runtimeOrigin=()=>"";export const runtimeClientAddress=()=>"test-client";');
-const route=readFileSync('app/api/regiment/route.ts','utf8').replace("'@/db/raw'",JSON.stringify(dbUrl)).replace("'@/lib/regiment'",JSON.stringify(libUrl)).replace("'@/lib/countdown'",JSON.stringify(countdownUrl));
+const route=readFileSync('app/api/regiment/route.ts','utf8').replace("'@/scripts/medal-digest.mjs'",JSON.stringify(new URL('../scripts/medal-digest.mjs',import.meta.url).href)).replace("'@/db/raw'",JSON.stringify(dbUrl)).replace("'@/lib/regiment'",JSON.stringify(libUrl)).replace("'@/lib/countdown'",JSON.stringify(countdownUrl));
 const {GET,POST}=await import(url(compile(route)));let token='';
 const headers=(admin=true)=>({'X-Regiment-Machine':'11111111-1111-4111-8111-111111111111',...(admin&&token?{Authorization:'Bearer '+token}:{})});
 async function get(query='',admin=true){const r=await GET(new Request('https://test/api/regiment'+query,{headers:headers(admin)}));return {status:r.status,data:await r.json()}}
-async function post(body,admin=true){if(['clear_all','destroy_orbat'].includes(body.action) && !('confirmed' in body))body.confirmed=true;if(admin && ['clear_all','destroy_orbat'].includes(body.action) && !('confirmedDispositions' in body))body.confirmedDispositions=(await get()).data.assignments.filter(a=>/^(reserve|tentative|absent):/.test(a.slot)).map(({slot,user_id,created})=>({slot,user_id,created})).sort((a,b)=>a.slot.localeCompare(b.slot));if(body.action==='slot_role')body.icon=({'Melta Gunner':'melta','Guardsmen':'trooper','Section Leader':'leader','Medicae':'medic'})[body.role];const r=await POST(new Request('https://test/api/regiment',{method:'POST',headers:{'Content-Type':'application/json',...headers(admin)},body:JSON.stringify(body)}));return {status:r.status,data:await r.json()}}
+async function post(body,admin=true){if(body.action==='discord_medals_webhook'&&admin){if(body.revision===undefined)body.revision=(await get('?discord_medals=1')).data.webhookRevision;if(body.confirm===undefined)body.confirm=true;}if(['clear_all','destroy_orbat'].includes(body.action) && !('confirmed' in body))body.confirmed=true;if(admin && ['clear_all','destroy_orbat'].includes(body.action) && !('confirmedDispositions' in body))body.confirmedDispositions=(await get()).data.assignments.filter(a=>/^(reserve|tentative|absent):/.test(a.slot)).map(({slot,user_id,created})=>({slot,user_id,created})).sort((a,b)=>a.slot.localeCompare(b.slot));if(body.action==='slot_role')body.icon=({'Melta Gunner':'melta','Guardsmen':'trooper','Section Leader':'leader','Medicae':'medic'})[body.role];const r=await POST(new Request('https://test/api/regiment',{method:'POST',headers:{'Content-Type':'application/json',...headers(admin)},body:JSON.stringify(body)}));return {status:r.status,data:await r.json()}}
 let r=await post({action:'login',key:'initial-test-key'});token=r.data.sessionToken;
 await get();
+assert.equal((await post({action:'discord_medals_cancel'},false)).status,401);
+assert.equal((await post({action:'discord_medals_cancel'})).status,400);
+assert.equal((await post({action:'discord_medals_cancel',confirm:true})).status,200);
+// Webhook controls are administrator-only, write-only and do not send empty batches.
+assert.equal((await get('?discord_medals=1',false)).status,401);
+assert.equal((await post({action:'discord_medals_push'},false)).status,401);
+assert.equal((await post({action:'discord_medals_push'})).status,409);
+assert.equal((await post({action:'discord_medals_webhook',url:'https://example.com/hook'})).status,400);
+const webhook='https://discord.com/api/webhooks/123/test-token';
+assert.equal((await post({action:'discord_medals_webhook',url:webhook})).status,200);
+assert.equal((await post({action:'discord_medals_webhook',url:webhook,revision:'stale'})).status,409);
+assert.equal((await post({action:'discord_medals_webhook',url:'',confirm:false})).status,400);
+let feed=(await get('?discord_medals=1')).data;
+assert.equal(feed.configured,true);assert.equal(feed.pending,0);assert.equal(feed.nextAt,null);assert.deepEqual(feed.awards,[]);
+assert.equal(JSON.stringify(feed).includes('test-token'),false);
+assert.equal((await post({action:'discord_medals_push'})).data.queued,false);
+sql.prepare("INSERT INTO personnel(id,name,steam_id,enlisted) VALUES ('hook-person','Hook test','hook-steam','now')").run();
+sql.prepare("INSERT INTO medals(id,name,description,created) VALUES ('hook-medal','Hook medal','','now')").run();
+sql.prepare("INSERT INTO medal_awards(id,medal_id,user_id,created) VALUES ('hook-award','hook-medal','hook-person','now')").run();
+feed=(await get('?discord_medals=1')).data;assert.equal(feed.pending,1);assert.ok(feed.nextAt>Date.now()+890000);
+assert.equal((await post({action:'discord_medals_push'})).data.queued,true);
+feed=(await get('?discord_medals=1')).data;assert.ok(feed.nextAt<=Date.now());
+sql.prepare('UPDATE discord_medal_batches SET retry_at=unixepoch()+120 WHERE delivered_at IS NULL').run();
+await post({action:'discord_medals_push'});feed=(await get('?discord_medals=1')).data;assert.ok(feed.nextAt>Date.now()+110000);
+sql.prepare("UPDATE medal_awards SET revoked_at='now' WHERE id='hook-award'").run();
+feed=(await get('?discord_medals=1')).data;assert.equal(feed.pending,0);assert.deepEqual(feed.awards,[]);assert.equal(feed.nextAt,null);
+assert.equal((await post({action:'discord_medals_push'})).data.queued,false);
+sql.prepare("DELETE FROM medal_awards WHERE id='hook-award'").run();sql.prepare("DELETE FROM medals WHERE id='hook-medal'").run();sql.prepare("DELETE FROM personnel WHERE id='hook-person'").run();
+assert.equal((await post({action:'discord_medals_webhook',url:''})).status,200);
 const users=[];for(const [name,status]of [['Command','active'],['Line Trooper','active'],['Reinforcement','active'],['Leave Member','absent'],['Unassigned','active'],['Inactive','inactive']]){r=await post({action:'register',name,status,rank:'Staff Sgt',steam_id:name==='Command'?'76561190000000001':''});assert.equal(r.status,200);users.push(r.data.id)}
 assert.equal((await post({action:'phrase',role:'gm',phrase:'g'})).status,200);
 assert.equal((await post({action:'claim',slot:'gm',user:users[0],phrase:'g'},false)).status,200);
@@ -298,3 +327,4 @@ assert.equal((await post({action:'operation_config',mode:'open'})).status,200);
 const beforeRestart=JSON.stringify((await get()).data.users);adapter.close();adapter=openDatabase(join(temporary,'regiment.sqlite'),resolve('drizzle'));globalThis.__testDb=adapter;assert.equal(JSON.stringify((await get()).data.users),beforeRestart);assert.equal((await get('?medals=1')).data.awards.length,16);assert.equal((await get('?warnings=1&user='+dynamicPeople[1].id)).data.warnings.length,1);assert.equal(adapter.sqlite.prepare('SELECT count(*) AS n FROM _regiment_migrations').get().n,readdirSync('drizzle').filter(name=>/^\d+.*\.sql$/.test(name)).length);assert.equal((await post({action:'operation_config',mode:'main'})).status,200);assert.equal((await get()).data.assignments.find(a=>a.user_id===memoryPeople[1]).slot,'medic2');assert.equal((await post({action:'clear_all',tentativeAttendance:{[memoryPeople[3]]:true}})).status,200);assert.equal(adapter.sqlite.prepare('SELECT count(*) AS n FROM assignment_role_memory').get().n,0);
 }finally{adapter.close();rmSync(temporary,{recursive:true,force:true})}
 });
+

@@ -22,7 +22,7 @@ test('second command slot swaps GM/vox and shares GM signup and withdrawal clear
  const directory=mkdtempSync(join(tmpdir(),'second-gm-'));const db=openDatabase(join(directory,'db.sqlite'),resolve('drizzle'));globalThis.__secondGmDb=db;
  try {
   const raw=url('export const database=()=>globalThis.__secondGmDb;export const runtimeSecret=()=>"test-admin";export const runtimeOrigin=()=>"https://test.invalid";export const runtimeClientAddress=()=>"second-gm-test";');
-  const source=readFileSync('app/api/regiment/route.ts','utf8').replace("'@/db/raw'",JSON.stringify(raw)).replace("'@/lib/regiment'",JSON.stringify(regimentUrl)).replace("'@/lib/countdown'",JSON.stringify(url(compile(readFileSync('lib/countdown.ts','utf8')))));
+  const source=readFileSync('app/api/regiment/route.ts','utf8').replace("'@/scripts/medal-digest.mjs'",JSON.stringify(new URL('../scripts/medal-digest.mjs',import.meta.url).href)).replace("'@/db/raw'",JSON.stringify(raw)).replace("'@/lib/regiment'",JSON.stringify(regimentUrl)).replace("'@/lib/countdown'",JSON.stringify(url(compile(readFileSync('lib/countdown.ts','utf8')))));
   const {GET,POST}=await import(url(compile(source)));let token='';
   const headers=admin=>({'Content-Type':'application/json',Origin:'https://test.invalid',...(admin&&token?{Authorization:'Bearer '+token}:{})});
   const post=async(body,admin=true,status=200)=>{const r=await POST(new Request('https://test.invalid/api/regiment',{method:'POST',headers:headers(admin),body:JSON.stringify(body)}));const d=await r.json();assert.equal(r.status,status,JSON.stringify(d));return d;};
@@ -88,4 +88,5 @@ test('saved layout gains gm2 once without changing existing assignments or seale
   assert.equal(state.revision,8);assert.equal(state.layout.slots.filter(s=>s.id==='gm2').length,1);
  } finally {db.close();rmSync(directory,{recursive:true,force:true});}
 });
+
 

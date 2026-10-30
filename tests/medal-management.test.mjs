@@ -14,7 +14,7 @@ test('medal types can be edited and removed without losing awarded honours',asyn
   const compile=s=>ts.transpileModule(s,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
   const url=s=>'data:text/javascript;base64,'+Buffer.from(s).toString('base64');
   const dbUrl=url(`export const database=()=>globalThis.${key};export const runtimeSecret=()=>"medal-test-key";export const runtimeOrigin=()=>"";export const runtimeClientAddress=()=>"medal-test";`);
-  const route=readFileSync('app/api/regiment/route.ts','utf8').replace("'@/db/raw'",JSON.stringify(dbUrl)).replace("'@/lib/regiment'",JSON.stringify(url(compile(readFileSync('lib/regiment.ts','utf8'))))).replace("'@/lib/countdown'",JSON.stringify(url(compile(readFileSync('lib/countdown.ts','utf8')))));
+  const route=readFileSync('app/api/regiment/route.ts','utf8').replace("'@/scripts/medal-digest.mjs'",JSON.stringify(new URL('../scripts/medal-digest.mjs',import.meta.url).href)).replace("'@/db/raw'",JSON.stringify(dbUrl)).replace("'@/lib/regiment'",JSON.stringify(url(compile(readFileSync('lib/regiment.ts','utf8'))))).replace("'@/lib/countdown'",JSON.stringify(url(compile(readFileSync('lib/countdown.ts','utf8')))));
   const {GET,POST}=await import(url(compile(route)));let token='';
   const headers=admin=>({'Content-Type':'application/json',...(admin&&token?{Authorization:'Bearer '+token}:{})});
   const post=async(body,admin=true)=>{const r=await POST(new Request('https://test/api/regiment',{method:'POST',headers:headers(admin),body:JSON.stringify(body)}));return {status:r.status,data:await r.json()}};
