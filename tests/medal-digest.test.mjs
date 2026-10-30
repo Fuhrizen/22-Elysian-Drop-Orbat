@@ -80,7 +80,7 @@ test('dispatch congratulates recipients, includes medal purpose and omits banner
 
 test('award heading combines rank, recipient and medal',()=>{
  const text=payload([{rank:'Corporal',name:'Hale',medal:'Commendation',reason:'Held the line.'}],1).embeds[0].description;
- assert.ok(text.includes('**Cpl. Hale has been awarded Commendation**'));
+ assert.ok(text.includes('**Cpl. Hale** has been awarded **Commendation**'));
  assert.ok(text.includes('> Held the line.'));
  assert.ok(!text.includes('```'));
 });
