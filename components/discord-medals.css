@@ -18,3 +18,8 @@
 .discord-confirm-actions {display:grid!important;grid-template-columns:1fr 1fr;gap:10px!important;width:100%;margin-top:22px;}
 .discord-confirm-actions>button {margin:0!important;min-height:44px;border-radius:0!important;box-shadow:none!important;font-family:var(--font-mono),monospace!important;text-transform:uppercase;font-size:12px;}
 @media(max-width:480px){.discord-dispatch-actions,.discord-confirm-actions{grid-template-columns:1fr;}}
+
+/* Keep cancellation adjacent to Send without competing with its primary action. */
+.discord-dispatch-actions {grid-template-columns:minmax(0,1fr) 48px;align-items:stretch;}
+.discord-dispatch-actions .discord-cancel {width:48px;min-width:48px;padding:0;}
+@media(max-width:480px){.discord-dispatch-actions{grid-template-columns:minmax(0,1fr) 48px;}}
