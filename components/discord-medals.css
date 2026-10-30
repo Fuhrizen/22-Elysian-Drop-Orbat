@@ -27,3 +27,12 @@
 .discord-confirm-actions .discord-confirm-cancel {color:#f09b91!important;border-color:#ae5148!important;background:#301915!important;}
 .discord-confirm-actions .discord-confirm-cancel:hover:not(:disabled) {color:#ffe2dc!important;border-color:#e17769!important;background:#49231e!important;}
 .discord-confirm-actions .discord-confirm-cancel:focus-visible {outline:2px solid #e17769;outline-offset:3px;}
+
+.discord-config-card .discord-card-heading {padding-bottom:18px;border-bottom:1px solid #465239;}
+.discord-config-card .discord-config-actions {margin:18px 0;gap:12px;}
+.discord-webhook-test {display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:22px;padding-top:20px;border-top:1px solid #465239;}
+.discord-webhook-test strong {color:#ddc17c;font-size:14px;}
+.discord-webhook-test p {margin:6px 0 0;max-width:480px;}
+.discord-webhook-test>button {display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:44px;white-space:nowrap;}
+.discord-environment-note {margin:20px 0 0!important;padding-top:14px;border-top:1px solid #35402e;}
+@media(max-width:600px){.discord-webhook-test{flex-direction:column;align-items:stretch;}.discord-webhook-test>button{width:100%;}}

@@ -68,3 +68,15 @@ export function startDigestWorker(db) {
 
 
 
+
+export async function sendTestWebhook(value,send=fetch) {
+ const message=payload([],'test');
+ message.embeds[0].title='MUNITORUM HONOURS — RELAY TEST';
+ message.embeds[0].description='Vox relay verification. This is a test transmission from Regimental Command. No medals have been awarded and no queued dispatches have been changed.';
+ try {
+  const response=await send(webhookURL(value),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(message),signal:AbortSignal.timeout(10000),redirect:'error'});
+  if(!response.ok)throw Error('rejected');
+  const acknowledgement=await response.json();
+  if(!acknowledgement.id)throw Error('unconfirmed');
+ }catch{throw Error('Discord did not confirm the test message. Check the webhook or try again later.');}
+}

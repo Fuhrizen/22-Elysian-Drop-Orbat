@@ -1,4 +1,4 @@
-import { environmentWebhook, webhookURL } from '@/scripts/medal-digest.mjs';
+import { environmentWebhook, webhookURL, sendTestWebhook } from '@/scripts/medal-digest.mjs';
 import { database, runtimeSecret, runtimeOrigin, runtimeClientAddress } from '@/db/raw';
 import { slotRoleOptions, canLockSlot, editableRoles, slotTypes, ranks, slotPhraseRole, phraseRole, comparePersonnel, defaultOperationConfig, defaultLayout, validateLayout, defaultRolePolicy, type OrbatLayout, type RolePolicy, validRolePolicy } from '@/lib/regiment';
 import { defaultCountdown, localEpoch, type CountdownConfig } from '@/lib/countdown';
@@ -359,6 +359,15 @@ async function handlePost(req: Request) {
             const target=field(b.slot);
             if(!(await currentSlots()).some(s=>s.id===target) && ! /^(reserve|tentative|absent):/.test(target)) return fail('Invalid role.');
         } else if (!await isAdmin(req)) return fail('Administrator clearance required.', 401);
+        if(action==='discord_medals_test') {
+            if(process.env.DISCORD_MEDALS_ENABLED==='false')return fail('Sending is disabled in this environment.',409);
+            if(existsSync(process.env.ORBAT_DEPLOYMENT_GUARD||'/app/data/.deployment-paused'))return fail('Deployment maintenance is in progress.',409);
+            const value=environmentWebhook() || (await setting('discord_medals_webhook'))?.value || '';
+            if(!value)return fail('Configure a webhook first.',409);
+            if(!await throttle(req,'discord_webhook_test'))return fail('Too many test requests. Try again later.',429);
+            try{await sendTestWebhook(value);return json({ok:true});}
+            catch{return fail('Discord did not confirm the test message. Check the webhook or try again later.',502);}
+        }
         if(action==='discord_medals_cancel') {
             if(b.confirm!==true)return fail('Confirm cancellation of pending dispatches.',400);
             // An in-flight HTTP request cannot safely be recalled; leave its lease intact.

@@ -84,3 +84,15 @@ test('award heading combines rank, recipient and medal',()=>{
  assert.ok(text.includes('> Held the line.'));
  assert.ok(!text.includes('```'));
 });
+
+
+test('explicit relay test sends no awards and requires Discord acknowledgement',async()=>{
+ const {sendTestWebhook}=await import('../scripts/medal-digest.mjs');
+ await sendTestWebhook(url,async(destination,options)=>{
+  const message=JSON.parse(options.body);assert.match(message.embeds[0].title,/RELAY TEST/);
+  assert.match(message.embeds[0].description,/No medals have been awarded/);assert.doesNotMatch(message.embeds[0].description,/has been awarded/);
+  assert.deepEqual(message.allowed_mentions,{parse:[]});return ack();
+ });
+ await assert.rejects(()=>sendTestWebhook(url,async()=>({ok:false,status:429})),/Discord did not confirm/);
+ await assert.rejects(()=>sendTestWebhook(url,async()=>({ok:true,json:async()=>({})})),/Discord did not confirm/);
+});
