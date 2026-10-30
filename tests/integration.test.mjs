@@ -31,7 +31,7 @@ assert.equal((await post({action:'discord_medals_webhook',url:webhook})).status,
 assert.equal((await post({action:'discord_medals_webhook',url:webhook,revision:'stale'})).status,409);
 assert.equal((await post({action:'discord_medals_webhook',url:'',confirm:false})).status,400);
 let feed=(await get('?discord_medals=1')).data;
-assert.equal(feed.configured,true);assert.equal(feed.pending,0);assert.equal(feed.nextAt,null);assert.equal(feed.preview,null);
+assert.equal(feed.configured,true);assert.equal(feed.pending,0);assert.equal(feed.nextAt,null);assert.deepEqual(feed.awards,[]);
 assert.equal(JSON.stringify(feed).includes('test-token'),false);
 assert.equal((await post({action:'discord_medals_push'})).data.queued,false);
 sql.prepare("INSERT INTO personnel(id,name,steam_id,enlisted) VALUES ('hook-person','Hook test','hook-steam','now')").run();
@@ -43,7 +43,7 @@ feed=(await get('?discord_medals=1')).data;assert.ok(feed.nextAt<=Date.now());
 sql.prepare('UPDATE discord_medal_batches SET retry_at=unixepoch()+120 WHERE delivered_at IS NULL').run();
 await post({action:'discord_medals_push'});feed=(await get('?discord_medals=1')).data;assert.ok(feed.nextAt>Date.now()+110000);
 sql.prepare("UPDATE medal_awards SET revoked_at='now' WHERE id='hook-award'").run();
-feed=(await get('?discord_medals=1')).data;assert.equal(feed.pending,0);assert.equal(feed.preview,null);assert.equal(feed.nextAt,null);
+feed=(await get('?discord_medals=1')).data;assert.equal(feed.pending,0);assert.deepEqual(feed.awards,[]);assert.equal(feed.nextAt,null);
 assert.equal((await post({action:'discord_medals_push'})).data.queued,false);
 sql.prepare("DELETE FROM medal_awards WHERE id='hook-award'").run();sql.prepare("DELETE FROM medals WHERE id='hook-medal'").run();sql.prepare("DELETE FROM personnel WHERE id='hook-person'").run();
 assert.equal((await post({action:'discord_medals_webhook',url:''})).status,200);
