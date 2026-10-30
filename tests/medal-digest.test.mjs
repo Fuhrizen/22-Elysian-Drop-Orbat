@@ -16,7 +16,7 @@ test('awards share a persistent fifteen-minute batch; no early sends or historic
   award(db,'a');award(db,'b');const batch=db.prepare('SELECT * FROM discord_medal_batches').get();
   assert.ok(batch.due_at>=Math.floor(Date.now()/1000)+899);
   let sent=0;
-  const send=async(u,o)=>{sent++;const body=JSON.parse(o.body);assert.equal(body.embeds.length,1);assert.equal(body.embeds[0].description.split('\n').filter(line=>line.startsWith('•')).length,2);assert.doesNotMatch(body.embeds[0].description,/×/);assert.deepEqual(body.allowed_mentions,{parse:[]});return ack();};
+  const send=async(u,o)=>{sent++;const body=JSON.parse(o.body);assert.equal(body.embeds.length,1);assert.equal(body.embeds[0].description.split('\n').filter(line=>line.startsWith('**')).length,2);assert.doesNotMatch(body.embeds[0].description,/×/);assert.deepEqual(body.allowed_mentions,{parse:[]});return ack();};
   assert.equal(await flushDigest(db,url,{now:batch.due_at-1,send}),false);assert.equal(sent,0);
   assert.equal(await flushDigest(db,url,{now:batch.due_at,send}),true);assert.equal(sent,1);
   assert.equal(await flushDigest(db,url,{now:batch.due_at+100,send}),false);assert.equal(sent,1);
@@ -48,7 +48,7 @@ test('mixed batch omits revoked awards, including revocations before a retry',as
   award(db,'keep');award(db,'revoke');
   db.prepare("UPDATE medal_awards SET revoked_at='now' WHERE id='revoke'").run();
   const now=Math.floor(Date.now()/1000)+901;
-  await flushDigest(db,url,{now,send:async(u,o)=>{assert.equal(JSON.parse(o.body).embeds[0].description.split('\n').filter(line=>line.startsWith('•')).length,1);return {ok:false,status:500};}});
+  await flushDigest(db,url,{now,send:async(u,o)=>{assert.equal(JSON.parse(o.body).embeds[0].description.split('\n').filter(line=>line.startsWith('**')).length,1);return {ok:false,status:500};}});
   db.prepare("UPDATE medal_awards SET revoked_at='now' WHERE id='keep'").run();
   let sends=0;await flushDigest(db,url,{now:now+3601,send:async()=>{sends++;return ack();}});
   assert.equal(sends,0);
@@ -72,8 +72,15 @@ test('environment webhook can be blank and configured without exposing a saved U
 test('dispatch congratulates recipients, includes medal purpose and omits banner/footer',()=>{
  const message=payload([{name:'Player',medal:'Valour',purpose:'Recognises courage under fire',reason:'Held the line @everyone <script>'}],7);
  assert.match(message.avatar_url,/regiment-logo-transparent.png$/);
- const embed=message.embeds[0];assert.equal(embed.color,0xddc17c);assert.equal(embed.image,undefined);assert.match(embed.footer.text,/Emperor protects/);assert.match(embed.description,/^By order of Regimental Command/);assert.match(embed.description,/Has been awarded:/);assert.match(embed.description,/Valour/);assert.doesNotMatch(embed.description,/https?:|\]\(/);
+ const embed=message.embeds[0];assert.equal(embed.color,0xddc17c);assert.equal(embed.image,undefined);assert.match(embed.footer.text,/Emperor protects/);assert.match(embed.description,/^By order of Regimental Command/);assert.match(embed.description,/has been awarded/);assert.match(embed.description,/Valour/);assert.doesNotMatch(embed.description,/https?:|\]\(/);
  assert.match(embed.description,/> Held the line everyone script/);assert.doesNotMatch(embed.description,/@everyone|<script>/);
  assert.deepEqual(message.allowed_mentions,{parse:[]});
 });
 
+
+test('award heading combines rank, recipient and medal',()=>{
+ const text=payload([{rank:'Corporal',name:'Hale',medal:'Commendation',reason:'Held the line.'}],1).embeds[0].description;
+ assert.ok(text.includes('**Cpl. Hale has been awarded Commendation**'));
+ assert.ok(text.includes('> Held the line.'));
+ assert.ok(!text.includes('```'));
+});
