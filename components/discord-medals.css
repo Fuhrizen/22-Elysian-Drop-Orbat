@@ -23,3 +23,7 @@
 .discord-dispatch-actions {grid-template-columns:minmax(0,1fr) 48px;align-items:stretch;}
 .discord-dispatch-actions .discord-cancel {width:48px;min-width:48px;padding:0;}
 @media(max-width:480px){.discord-dispatch-actions{grid-template-columns:minmax(0,1fr) 48px;}}
+
+.discord-confirm-actions .discord-confirm-cancel {color:#f09b91!important;border-color:#ae5148!important;background:#301915!important;}
+.discord-confirm-actions .discord-confirm-cancel:hover:not(:disabled) {color:#ffe2dc!important;border-color:#e17769!important;background:#49231e!important;}
+.discord-confirm-actions .discord-confirm-cancel:focus-visible {outline:2px solid #e17769;outline-offset:3px;}
