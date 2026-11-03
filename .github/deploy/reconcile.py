@@ -27,7 +27,6 @@ from deployment_records import record_deployment
 
 ROOT = Path('/srv/orbat')
 REPOSITORY = os.environ.get('GITHUB_REPOSITORY', 'Fuhrizen/22-Elysian-Drop-Orbat')
-APPROVED_AUTHORS = {'fuhrizen'}
 ORIGIN = 'https://22orbat.ivenity.co.uk'
 PREVIEW_DOMAIN = '22preview.ivenity.co.uk'
 SOURCE = Path(__file__).resolve().parents[2]
@@ -397,6 +396,7 @@ if __name__ == '__main__':
     with (ROOT / '.reconcile.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         reconcile(sys.argv[1])
+
 
 
 

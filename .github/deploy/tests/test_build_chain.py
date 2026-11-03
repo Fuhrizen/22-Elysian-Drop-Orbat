@@ -44,6 +44,14 @@ class BuildChain(unittest.TestCase):
         self.metadata.start();self.addCleanup(self.metadata.stop)
         with self.assertRaisesRegex(RuntimeError,'revision mismatch'): select(84,self.request)
 
+    def test_dependabot_uses_same_ci_build_provenance_and_preview_chain(self):
+        self.pr=pull(user={'login':'dependabot[bot]','id':49699333,'type':'Bot'},head={'sha':'a'*40,'ref':'dependabot/npm_and_yarn/example','repo':{'full_name':'Fuhrizen/22-Elysian-Drop-Orbat'}})
+        self.assertEqual(resolve({'workflow_run':{'id':42}},self.request)['enabled'],'true')
+        plan=select(84,self.request)
+        self.assertEqual((plan['number'],plan['revision'],plan['run']['id']),(12,'a'*40,84))
+        self.ci['conclusion']='failure'
+        self.assertIsNone(select(84,self.request))
+
     def test_main_push_builds_latest_main_without_ci(self):
         self.assertEqual(resolve({'ref':'refs/heads/main','after':'c'*40},self.request)['target'],'main')
         self.assertEqual(resolve({'ref':'refs/heads/main','after':'a'*40},self.request),{'enabled':'false'})
@@ -55,4 +63,5 @@ class BuildChain(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
 

@@ -10,6 +10,14 @@ REPOSITORY = os.environ.get('GITHUB_REPOSITORY', 'Fuhrizen/22-Elysian-Drop-Orbat
 APPROVED_AUTHORS = {'fuhrizen'}
 
 
+def approved_author(user):
+    # Verify the GitHub-owned bot identity, not a branch prefix or display name.
+    if user.get('login', '').lower() in APPROVED_AUTHORS:
+        return True
+    return (user.get('login') == 'dependabot[bot]' and
+            user.get('id') == 49699333 and user.get('type') == 'Bot')
+
+
 def github(path, method='GET', data=None):
     request = Request('https://api.github.com/' + path.lstrip('/'), method=method,
         headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
@@ -72,7 +80,7 @@ def select(run_id, request=api, allow_ci=False):
         return None  # Never guess which PR owns a container or package.
     pr = request(f'pulls/{numbers[0]}')
     if ((pr['head'].get('repo') or {}).get('full_name') != REPOSITORY or
-            pr['user']['login'].lower() not in APPROVED_AUTHORS or pr['base']['ref'] != 'main'):
+            not approved_author(pr['user']) or pr['base']['ref'] != 'main'):
         return None
     action = 'remove' if pr['state'] == 'closed' else 'stop' if pr['draft'] else 'deploy'
     if cleanup_event and action == 'deploy':
@@ -114,6 +122,7 @@ if __name__ == '__main__':
     with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
         stream.write(''.join(f'{key}={value}\n' for key, value in result.items()))
     print(result.get('name', 'Superseded, failed or ineligible run; no deployment.'))
+
 
 
 
