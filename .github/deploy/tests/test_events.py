@@ -59,6 +59,17 @@ class Events(unittest.TestCase):
         self.assertIsNone(self.resolve(pr=pull(user={'login':'unknown'})))
         self.assertIsNone(self.resolve(pr=pull(head={'sha':'a'*40,'repo':{'full_name':'other/repo'}})))
 
+    def test_verified_same_repository_dependabot_runs_can_deploy_and_cleanup(self):
+        bot={'login':'dependabot[bot]','id':49699333,'type':'Bot'}
+        self.assertEqual(self.resolve(pr=pull(user=bot))['action'],'deploy')
+        self.assertEqual(self.resolve(pr=pull(user=bot,draft=True))['action'],'stop')
+        self.assertEqual(self.resolve(pr=pull(user=bot,state='closed'))['action'],'remove')
+        for user in [dict(bot,id=123),dict(bot,type='User'),dict(bot,login='other[bot]')]:
+            self.assertIsNone(self.resolve(pr=pull(user=user)))
+        self.assertIsNone(self.resolve(pr=pull(user=bot,head={'sha':'a'*40,'repo':{'full_name':'other/repo'}})))
+        self.assertIsNone(self.resolve(run(conclusion='failure'),pull(user=bot)))
+        self.assertIsNone(self.resolve(run(head_sha='b'*40),pull(user=bot)))
+
     def test_missing_workflow_pr_metadata_uses_commit_association(self):
         self.assertEqual(self.resolve(run(pull_requests=[]))['number'], 12)
 
@@ -135,5 +146,6 @@ class Cleanup(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
 
 
